@@ -1273,6 +1273,43 @@ function extractFileName(url) {
   }
 }
 
+// 🔥 通过background script下载文件（绕过CORS）
+async function fetchViaBackground(url, requestHeaders) {
+  console.log('📥 通过background下载:', url);
+
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        action: 'fetchBlob',
+        url: url,
+        requestHeaders: requestHeaders
+      },
+      (response) => {
+        if (response && response.success) {
+          // 将base64转换为blob
+          const byteCharacters = atob(response.data);
+          const byteArrays = [];
+
+          for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+            const slice = byteCharacters.slice(offset, offset + 512);
+            const byteNumbers = new Array(slice.length);
+            for (let i = 0; i < slice.length; i++) {
+              byteNumbers[i] = slice.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            byteArrays.push(byteArray);
+          }
+
+          const blob = new Blob(byteArrays, { type: response.type });
+          resolve(blob);
+        } else {
+          reject(new Error(response?.error || 'Fetch failed'));
+        }
+      }
+    );
+  });
+}
+
 // 下载全部 - 🔥 打包成 ZIP
 async function downloadAll(type) {
   const items = type === 'images' ? capturedImages :
@@ -1336,27 +1373,12 @@ async function downloadAll(type) {
               throw convertError;
             }
           } else {
-            // 非流媒体，直接下载
-            const response = await fetch(item.url);
-            blob = await response.blob();
+            // 非流媒体，通过background下载
+            blob = await fetchViaBackground(item.url, item.requestHeaders);
           }
         } else {
-          // 非视频，直接下载
-          // 🔥 使用保存的请求头信息
-          const requestHeaders = item.requestHeaders;
-          const fetchOptions = {};
-
-          if (requestHeaders) {
-            fetchOptions.headers = {
-              'Referer': requestHeaders.referer || '',
-              'User-Agent': requestHeaders.userAgent || navigator.userAgent,
-              'Cookie': requestHeaders.cookie || ''
-            };
-            console.log(`🔐 [${i + 1}/${total}] 使用请求头下载:`, requestHeaders.referer);
-          }
-
-          const response = await fetch(item.url, fetchOptions);
-          blob = await response.blob();
+          // 非视频，通过background下载
+          blob = await fetchViaBackground(item.url, item.requestHeaders);
         }
 
         // 添加序号避免重名
