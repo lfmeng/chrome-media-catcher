@@ -280,6 +280,10 @@
   function isImage(url, contentType) {
     const urlLower = url.toLowerCase();
 
+    // 🔥 调试日志
+    console.log('🔍 [isImage] 检查 URL:', url);
+    console.log('🔍 [isImage] contentType:', contentType);
+
     // 🔥 先过滤掉 JavaScript bundle 文件（即使末尾有图片扩展名）
     const jsBundlePatterns = [
       '~loader.',     // webpack loader pattern
@@ -384,7 +388,9 @@
     const hasExtension = imageExtensions.some(ext => urlLower.includes(ext));
     const hasMimeType = contentType && imageMimes.some(mime => contentType.includes(mime));
 
-    return hasExtension || hasMimeType;
+    const result = hasExtension || hasMimeType;
+    console.log(`✅ [isImage] 结果: ${result}, hasExtension: ${hasExtension}, hasMimeType: ${hasMimeType}`);
+    return result;
   }
 
   // 判断是否为视频 - 增强版
@@ -985,10 +991,18 @@
           if (resource.name && !capturedUrls.has(resource.name)) {
             const url = resource.name;
 
+            // 🔥 特别关注 .webp 文件
+            if (url.toLowerCase().includes('.webp')) {
+              console.log('🎯 发现 .webp 资源:', url);
+            }
+
             // 检查图片
             if (isCapturingImages && isImage(url, null)) {
+              console.log('✅ 捕获图片:', url);
               checkMediaResource(url, 'image');
               totalCaptured++;
+            } else if (url.toLowerCase().includes('.webp')) {
+              console.log('❌ .webp 未通过 isImage 检查:', url);
             }
 
             // 检查音频
