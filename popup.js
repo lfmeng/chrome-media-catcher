@@ -672,6 +672,7 @@ function updateImagesList() {
     html += images.map(img => {
       const fileName = getFileName(img.url, img.type);
       const isSelected = selectedImages.has(img.originalIndex);
+      const loadId = `img-${img.originalIndex}`;
       return `
         <div class="grid-item" data-index="${img.originalIndex}">
           <input type="checkbox"
@@ -679,8 +680,12 @@ function updateImagesList() {
                  data-index="${img.originalIndex}"
                  ${isSelected ? 'checked' : ''}>
           <label class="grid-checkbox-label"></label>
-          <div class="grid-thumbnail">
-            <img src="${img.url}" alt="${fileName}" crossorigin="anonymous" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder\\'>📷</div>'">
+          <div class="grid-thumbnail" data-url="${img.url}" data-headers='${JSON.stringify(img.requestHeaders || {})}' data-load-id="${loadId}">
+            <img src="${img.url}" alt="${fileName}" crossorigin="anonymous" referrerpolicy="no-referrer" data-load-id="${loadId}" class="lazy-image">
+            <div class="placeholder lazy-placeholder" style="display:none;">
+              <span>📷</span>
+              <span style="font-size:10px;margin-top:4px;">点击加载</span>
+            </div>
             <div class="grid-overlay">
               <button class="btn-icon preview" title="预览" data-url="${img.url}">
                 <svg viewBox="0 0 16 16" fill="currentColor"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/></svg>
@@ -746,6 +751,31 @@ function updateImagesList() {
   function updateSelectedCount() {
     selectedCountSpan.textContent = selectedImages.size;
   }
+
+  // 🔥 为所有图片添加加载事件监听器
+  const lazyImages = imagesList.querySelectorAll('.lazy-image');
+  lazyImages.forEach(img => {
+    // 加载成功时隐藏占位符
+    img.addEventListener('load', () => {
+      const placeholder = img.nextElementSibling;
+      if (placeholder && placeholder.classList.contains('lazy-placeholder')) {
+        placeholder.style.display = 'none';
+      }
+    });
+
+    // 加载失败时显示占位符
+    img.addEventListener('error', () => {
+      img.style.display = 'none';
+      const placeholder = img.nextElementSibling;
+      if (placeholder && placeholder.classList.contains('lazy-placeholder')) {
+        placeholder.style.display = 'flex';
+        placeholder.style.cursor = 'pointer';
+
+        // 添加点击加载事件
+        placeholder.onclick = () => loadImagePreview(placeholder);
+      }
+    });
+  });
 }
 
 // 🔥 记录当前已渲染的视频 URL（用于增量更新）
@@ -1566,6 +1596,70 @@ function saveCapturedData() {
   });
 }
 
+// 🔥 点击加载图片预览（通过 background script 绕过 CORS）
+async function loadImagePreview(placeholderElement) {
+  const thumbnail = placeholderElement.parentElement;
+  const url = thumbnail.dataset.url;
+  const headers = JSON.parse(thumbnail.dataset.headers || '{}');
+  const loadId = thumbnail.dataset.loadId;
+
+  // 显示加载中
+  placeholderElement.innerHTML = '<span>⏳</span><span style="font-size:10px;margin-top:4px;">加载中...</span>';
+
+  try {
+    // 通过 background script 获取图片
+    const response = await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        {
+          action: 'fetchBlob',
+          url: url,
+          requestHeaders: headers
+        },
+        (response) => resolve(response)
+      );
+    });
+
+    if (response && response.success) {
+      // 将 base64 转换为 blob URL
+      const byteCharacters = atob(response.data);
+      const byteArrays = [];
+      const sliceSize = 512;
+
+      for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+        const slice = byteCharacters.slice(offset, offset + sliceSize);
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+      }
+
+      const blob = new Blob(byteArrays, { type: response.type });
+      const blobUrl = URL.createObjectURL(blob);
+
+      // 找到并更新 img 标签
+      const img = thumbnail.querySelector(`img[data-load-id="${loadId}"]`);
+      if (img) {
+        img.src = blobUrl;
+        img.style.display = 'block';
+        placeholderElement.style.display = 'none';
+
+        // 释放旧的 blob URL（如果存在）
+        if (img.dataset.blobUrl) {
+          URL.revokeObjectURL(img.dataset.blobUrl);
+        }
+        img.dataset.blobUrl = blobUrl;
+      }
+    } else {
+      throw new Error(response?.error || '加载失败');
+    }
+  } catch (error) {
+    console.error('加载图片失败:', error);
+    placeholderElement.innerHTML = '<span>❌</span><span style="font-size:10px;margin-top:4px;">加载失败</span>';
+  }
+}
+
 // 🔥 批量下载选中的图片
 async function downloadSelectedImages() {
   if (selectedImages.size === 0) {
@@ -1861,3 +1955,6 @@ function escapeHtml(text) {
 
 // 初始化
 init();
+
+// 🔥 将 loadImagePreview 暴露到全局作用域（供 HTML onclick 调用）
+window.loadImagePreview = loadImagePreview;
