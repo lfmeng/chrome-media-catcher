@@ -446,6 +446,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ cookies: cookies || [] });
     });
     return true; // 保持消息通道开放
+  } else if (message.action === 'fetchBlob') {
+    // 🔥 获取文件Blob（用于批量下载，绕过CORS）
+    handleFetchBlob(message, sendResponse);
+    return true; // 保持消息通道开放
   } else if (message.action === 'downloadFile') {
     // 🔥 下载文件（绕过CORS限制）
     handleDownloadFile(message, sendResponse);
@@ -460,6 +464,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+// 🔥 获取文件Blob（用于批量下载）
+function handleFetchBlob(message, sendResponse) {
+  const { url, requestHeaders } = message;
+
+  console.log('📥 获取Blob:', url);
+
+  // 使用fetch下载
+  fetch(url, {
+    headers: requestHeaders ? {
+      'Referer': requestHeaders.referer || '',
+      'User-Agent': requestHeaders.userAgent || '',
+      'Cookie': requestHeaders.cookie || ''
+    } : {}
+  })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.blob();
+    })
+    .then(blob => {
+      // 将blob转换为base64（因为不能直接传递blob）
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result.split(',')[1]; // 移除data:xxx;base64,前缀
+        sendResponse({
+          success: true,
+          data: base64data,
+          type: blob.type
+        });
+      };
+      reader.readAsDataURL(blob);
+    })
+    .catch(error => {
+      console.error('❌ 获取Blob失败:', error);
+      sendResponse({
+        success: false,
+        error: error.message
+      });
+    });
+}
 
 // 🔥 处理文件下载（绕过CORS）
 function handleDownloadFile(message, sendResponse) {
