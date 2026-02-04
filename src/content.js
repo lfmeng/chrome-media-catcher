@@ -976,6 +976,40 @@
     setTimeout(() => {
       let totalCaptured = 0;
 
+      // 🔥 先扫描所有已加载的网络资源（包括懒加载和动态加载的）
+      try {
+        const resources = performance.getEntriesByType('resource');
+        console.log(`🔍 扫描 ${resources.length} 个网络资源...`);
+
+        resources.forEach((resource) => {
+          if (resource.name && !capturedUrls.has(resource.name)) {
+            const url = resource.name;
+
+            // 检查图片
+            if (isCapturingImages && isImage(url, null)) {
+              checkMediaResource(url, 'image');
+              totalCaptured++;
+            }
+
+            // 检查音频
+            if (isCapturingAudios && isAudio(url, null)) {
+              checkMediaResource(url, 'audio');
+              totalCaptured++;
+            }
+
+            // 检查视频
+            if (isCapturingVideos && isVideo(url, null)) {
+              checkMediaResource(url, 'video');
+              totalCaptured++;
+            }
+          }
+        });
+
+        console.log(`✅ 从网络资源中捕获了 ${totalCaptured} 个文件`);
+      } catch (e) {
+        console.warn('扫描网络资源失败:', e);
+      }
+
       // 捕获已存在的图片
       if (isCapturingImages) {
         const images = document.querySelectorAll('img');
