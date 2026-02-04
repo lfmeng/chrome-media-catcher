@@ -1203,51 +1203,34 @@ async function downloadMedia(url, index, type) {
   const mediaItem = [...capturedImages, ...capturedVideos, ...capturedAudios].find(m => m.url === url);
   const requestHeaders = mediaItem?.requestHeaders;
 
-  if (requestHeaders) {
-    console.log('🔐 使用保存的请求头下载:', requestHeaders.referer);
+  // 🔥 通过background script下载（绕过CORS）
+  try {
+    console.log('🔐 发送下载请求到background:', requestHeaders?.referer);
 
-    // 🔥 使用fetch下载（带上请求头），然后触发浏览器下载
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'Referer': requestHeaders.referer || '',
-          'User-Agent': requestHeaders.userAgent || navigator.userAgent,
-          'Cookie': requestHeaders.cookie || ''
+    // 发送消息到background script进行下载
+    const response = await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        {
+          action: 'downloadFile',
+          url: url,
+          requestHeaders: requestHeaders
+        },
+        (response) => {
+          resolve(response);
         }
-      });
+      );
+    });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-
-      // 从URL中提取文件名
-      const fileName = extractFileName(url);
-
-      // 触发下载
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = fileName;
-      a.click();
-
-      // 清理blob URL
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-
-      console.log('✅ 下载完成（带请求头）');
-    } catch (error) {
-      console.error('❌ 使用请求头下载失败:', error);
-      console.log('🔄 降级到普通下载');
-
-      // 降级方案：使用chrome.downloads.download（不支持请求头）
-      chrome.downloads.download({
-        url: url,
-        saveAs: true
-      });
+    if (response && response.success) {
+      console.log('✅ 下载成功:', response.filename);
+    } else {
+      throw new Error(response?.error || '下载失败');
     }
-  } else {
-    console.log('ℹ️ 没有请求头信息，使用普通下载');
+  } catch (error) {
+    console.error('❌ Background下载失败:', error);
+    console.log('🔄 降级到chrome.downloads.download（不支持请求头）');
+
+    // 降级方案：使用chrome.downloads.download
     chrome.downloads.download({
       url: url,
       saveAs: true

@@ -446,6 +446,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ cookies: cookies || [] });
     });
     return true; // 保持消息通道开放
+  } else if (message.action === 'downloadFile') {
+    // 🔥 下载文件（绕过CORS限制）
+    handleDownloadFile(message, sendResponse);
+    return true; // 保持消息通道开放
   } else if (message.action === 'convertWithFFmpeg') {
     // 🔥 处理 FFmpeg 转换请求
     handleFFmpegConversion(message, sendResponse);
@@ -456,6 +460,112 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+// 🔥 处理文件下载（绕过CORS）
+function handleDownloadFile(message, sendResponse) {
+  const { url, requestHeaders } = message;
+
+  console.log('📥 Background下载文件:', url);
+  console.log('🔐 请求头:', requestHeaders);
+
+  // 从URL中提取文件名
+  let fileName = 'download';
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    fileName = pathname.split('/').pop();
+
+    // 如果没有扩展名，根据URL参数添加
+    if (fileName && !fileName.includes('.')) {
+      const urlParams = new URLSearchParams(urlObj.search);
+      const format = urlParams.get('format');
+      if (format) {
+        fileName += '.' + format;
+      }
+    }
+
+    // 如果文件名为空，使用默认名称
+    if (!fileName) {
+      const timestamp = Date.now();
+      fileName = `download_${timestamp}`;
+    }
+  } catch (e) {
+    console.error('❌ 解析URL失败:', e);
+    fileName = `download_${Date.now()}`;
+  }
+
+  // 🔥 使用fetch下载（background script不受CORS限制）
+  fetch(url, {
+    headers: requestHeaders ? {
+      'Referer': requestHeaders.referer || '',
+      'User-Agent': requestHeaders.userAgent || '',
+      'Cookie': requestHeaders.cookie || ''
+    } : {}
+  })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.blob();
+    })
+    .then(blob => {
+      // 创建Blob URL
+      const blobUrl = URL.createObjectURL(blob);
+
+      // 使用chrome.downloads.download下载
+      chrome.downloads.download({
+        url: blobUrl,
+        filename: fileName,
+        saveAs: true
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error('❌ 下载失败:', chrome.runtime.lastError);
+          sendResponse({
+            success: false,
+            error: chrome.runtime.lastError.message
+          });
+        } else {
+          console.log('✅ 下载成功:', fileName);
+
+          // 清理Blob URL（延迟执行，确保下载开始）
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+          }, 5000);
+
+          sendResponse({
+            success: true,
+            filename: fileName,
+            downloadId: downloadId
+          });
+        }
+      });
+    })
+    .catch(error => {
+      console.error('❌ Fetch失败:', error);
+
+      // 降级方案：直接使用chrome.downloads.download（不带请求头）
+      console.log('🔄 降级到直接下载');
+      chrome.downloads.download({
+        url: url,
+        filename: fileName,
+        saveAs: true
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({
+            success: false,
+            error: chrome.runtime.lastError.message
+          });
+        } else {
+          sendResponse({
+            success: true,
+            filename: fileName,
+            downloadId: downloadId,
+            note: '降级下载（未使用请求头）'
+          });
+        }
+      });
+    });
+}
 
 // 🔥 处理 FFmpeg 转换
 function handleFFmpegConversion(message, sendResponse) {
