@@ -1,0 +1,9 @@
+{
+  "name": "com.chrome.media.catcher.ffmpeg",
+  "description": "Chrome Media Catcher - FFmpeg Native Host",
+  "path": "/Users/menglingfei/Public/code/vue/chrome-media-catcher/native_host/ffmpeg_host.py",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://*/"
+  ]
+}

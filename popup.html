@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>媒体资源捕获器</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>媒体资源捕获器</h1>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-button active" data-tab="images">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4.002 10a.5.5 0 0 1-.5-.5V5.931L7.232 9.66a.5.5 0 0 1 .536 0L10 11.197l2.268-2.668a.5.5 0 0 1 .536 0L15 9.931V9.5a.5.5 0 0 1-.5.5h-10z"/>
+          <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zM2.5 2a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zM1 10.5A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3z"/>
+        </svg>
+        图片
+        <span class="count" id="image-count">0</span>
+      </button>
+      <button class="tab-button" data-tab="videos">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+          <path d="M6.271 5.055a.5.5 0 0 1 .52.038l3.5 2.5a.5.5 0 0 1 0 .814l-3.5 2.5A.5.5 0 0 1 6 10.5v-5a.5.5 0 0 1 .271-.445z"/>
+        </svg>
+        视频
+        <span class="count" id="video-count">0</span>
+      </button>
+      <button class="tab-button" data-tab="audios">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M11.536 14.01A8.473 8.473 0 0 1 8 15a8.485 8.485 0 0 1-8-8C0 3.079 3.583 0 8 0s8 3.079 8 8c0 2.267-.926 4.334-2.426 5.843l-1.038-1.038A6.93 6.93 0 0 0 14.5 8c0-3.584-2.916-6.5-6.5-6.5S1.5 4.416 1.5 8c0 3.584 2.916 6.5 6.5 6.5 1.527 0 2.926-.526 4.036-1.402l1.04 1.04A7.964 7.964 0 0 1 8 15.5c-4.142 0-7.5-3.358-7.5-7.5C.5 3.858 3.858.5 8 .5s7.5 3.358 7.5 7.5c0 2.07-.846 3.955-2.214 5.324l-1.03-1.03A5.947 5.947 0 0 0 14.5 8c0-3.314-2.686-6-6-6S2.5 4.686 2.5 8s2.686 6 6 6c1.273 0 2.45-.402 3.42-1.085l1.036 1.036A7.943 7.943 0 0 1 8 15c-4.142 0-7.5-3.358-7.5-7.5C.5 3.358 3.858 0 8 0s7.5 3.358 7.5 7.5c0 2.07-.846 3.955-2.214 5.324l-1.03-1.03A5.947 5.947 0 0 0 14.5 8c0-3.314-2.686-6-6-6S2.5 4.686 2.5 8s2.686 6 6 6c1.273 0 2.45-.402 3.42-1.085l1.036 1.036z"/>
+        </svg>
+        音频
+        <span class="count" id="audio-count">0</span>
+      </button>
+      <button class="tab-button" data-tab="translator">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4.5 2h7A2.5 2.5 0 0 1 14 4.5v7a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 11.5v-7A2.5 2.5 0 0 1 4.5 2zM3 4.5v7a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5z"/>
+          <path d="M5 6h2v4H5V6zm4 0h2v4H9V6z"/>
+        </svg>
+        翻译
+      </button>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+      <!-- Images Tab -->
+      <div class="tab-panel active" id="images-panel">
+        <div class="toolbar">
+          <button class="btn btn-primary" id="capture-images">
+            开始捕获
+          </button>
+          <select class="filter-select" id="image-type-filter">
+            <option value="all">全部类型</option>
+            <option value="jpeg">JPEG</option>
+            <option value="png">PNG</option>
+            <option value="gif">GIF</option>
+            <option value="webp">WebP</option>
+            <option value="svg">SVG</option>
+            <option value="ico">ICO</option>
+          </select>
+          <button class="btn btn-secondary" id="download-selected-images">
+            下载选中
+          </button>
+          <button class="btn btn-secondary" id="download-all-images">
+            下载ZIP
+          </button>
+          <button class="btn btn-danger" id="delete-selected-images">
+            删除选中
+          </button>
+          <button class="btn btn-secondary" id="clear-images">
+            清空列表
+          </button>
+        </div>
+        <div class="media-list" id="images-list">
+          <div class="empty-state">
+            <p>点击"开始捕获"按钮开始捕获图片</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Videos Tab -->
+      <div class="tab-panel" id="videos-panel">
+        <div class="toolbar">
+          <button class="btn btn-primary" id="capture-videos">
+            开始捕获
+          </button>
+          <button class="btn btn-secondary" id="download-all-videos">
+            下载ZIP
+          </button>
+          <button class="btn btn-secondary" id="clear-videos">
+            清空列表
+          </button>
+        </div>
+        <div class="media-list" id="videos-list">
+          <div class="empty-state">
+            <p>点击"开始捕获"按钮开始捕获视频</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Audio Tab -->
+      <div class="tab-panel" id="audios-panel">
+        <div class="toolbar">
+          <button class="btn btn-primary" id="capture-audios">
+            开始捕获
+          </button>
+          <button class="btn btn-secondary" id="download-all-audios">
+            下载ZIP
+          </button>
+          <button class="btn btn-secondary" id="clear-audios">
+            清空列表
+          </button>
+        </div>
+        <div class="media-list" id="audios-list">
+          <div class="empty-state">
+            <p>点击"开始捕获"按钮开始捕获音频</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Translator Tab -->
+      <div class="tab-panel" id="translator-panel">
+        <div class="translator-container">
+          <div class="translator-header">
+            <select class="lang-select" id="source-lang">
+              <option value="auto">自动检测</option>
+              <option value="en">英语</option>
+              <option value="zh">中文</option>
+              <option value="ja">日语</option>
+              <option value="ko">韩语</option>
+              <option value="fr">法语</option>
+              <option value="de">德语</option>
+              <option value="es">西班牙语</option>
+              <option value="ru">俄语</option>
+            </select>
+            <button class="swap-btn" id="swap-langs" title="交换语言">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 12L4 8H7V4H9V8H12L8 12zM8 4L12 8H9V12H7V8H4L8 4z"/>
+              </svg>
+            </button>
+            <select class="lang-select" id="target-lang">
+              <option value="en">英语</option>
+              <option value="zh" selected>中文</option>
+              <option value="ja">日语</option>
+              <option value="ko">韩语</option>
+              <option value="fr">法语</option>
+              <option value="de">德语</option>
+              <option value="es">西班牙语</option>
+              <option value="ru">俄语</option>
+            </select>
+          </div>
+
+          <div class="translator-body">
+            <div class="translator-input-group">
+              <textarea
+                class="translator-textarea"
+                id="source-text"
+                placeholder="输入要翻译的文本，支持多行逐行翻译..."
+              ></textarea>
+              <div class="translator-footer">
+                <span class="char-count" id="char-count">0 字符</span>
+                <button class="btn btn-primary btn-translate" id="translate-btn">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px;">
+                    <path d="M4.5 2h7A2.5 2.5 0 0 1 14 4.5v7a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 11.5v-7A2.5 2.5 0 0 1 4.5 2z"/>
+                  </svg>
+                  翻译
+                </button>
+              </div>
+            </div>
+
+            <div class="translator-output-group">
+              <div class="translator-result" id="translation-result">
+                <div class="empty-state">
+                  <p>翻译结果将显示在这里</p>
+                </div>
+              </div>
+              <div class="translator-footer">
+                <button class="btn btn-secondary btn-copy" id="copy-btn" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px;">
+                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                  </svg>
+                  复制结果
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔥 视频播放器模态框 -->
+  <div class="video-modal" id="videoModal">
+    <div class="modal-overlay" onclick="closeVideoModal()"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>视频预览</h3>
+        <button class="modal-close" onclick="closeVideoModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <video id="videoPlayer" controls controlsList="nodownload">
+          <source id="videoSource" src="" type="video/mp4">
+          您的浏览器不支持视频播放。
+        </video>
+        <div class="video-info" id="videoInfo"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔥 下载进度提示 -->
+  <div class="download-progress" id="downloadProgress">
+    <div class="progress-content">
+      <div class="progress-spinner"></div>
+      <div class="progress-text" id="progressText">正在准备下载...</div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="jszip.min.js"></script>
+  <script src="stream-downloader.js"></script>
+  <script src="stream-group-helper.js"></script>
+  <script src="translator.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
