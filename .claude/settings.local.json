@@ -5,7 +5,10 @@
       "Bash(node test-url-normalization.js:*)",
       "Bash(node -c:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\n添加 fetchBlob 功能支持批量下载绕过CORS\n\n- 新增 handleFetchBlob 函数处理批量下载\n- 添加 CORS_FIX_GUIDE.md 文档\n- 更新文件权限\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\n添加 fetchBlob 功能支持批量下载绕过CORS\n\n- 新增 handleFetchBlob 函数处理批量下载\n- 添加 CORS_FIX_GUIDE.md 文档\n- 更新文件权限\nEOF\n\\)\")",
+      "Bash(python3:*)",
+      "Bash(open /Users/menglingfei/Public/code/vue/chrome-media-catcher/icons-preview.html)",
+      "Bash(git commit -m \"$(cat <<''EOF''\n修复流媒体模块：重复检测、过滤不完整视频、增量更新\n\n主要改进：\n- 修复流媒体视频重复展示问题：增强 URL 标准化机制\n  • 新增 normalizeVideoUrl() 函数，移除 30+ 种无关参数\n  • 对流媒体 URL 特殊处理，只保留格式参数\n  • 支持检测参数变化导致的重复 URL\n\n- 过滤不完整流媒体（只有音频或只有画面）\n  • 扩展文件扩展名检测：.m4a, .aac, .m4v, .h264 等\n  • 新增 URL 路径关键词检测：/audio/, video_only, mute 等\n  • 检查 URL 参数、Content-Type、文件名模式\n  • 三重过滤：捕获时、加载时、保存时\n\n- 实现视频列表增量更新，避免重渲染\n  • 新增 createVideoElement() 使用 DOM API 创建元素\n  • 新增 createVideoGroups() 初始化分组结构\n  • 新增 initializeHlsForVideo() 单独初始化 HLS\n  • 只添加新视频，保留现有视频播放状态\n\n- 修复新窗口打开按钮功能\n  • 改进事件委托处理，支持按钮内部元素点击\n  • 添加 preventDefault 和 stopPropagation\n\n- 改进流媒体检测逻辑\n  • 移除模糊的 ''stream'' 关键词检测\n  • 基于文件扩展名和 pathname 严格判断\n\n- 移除所有 console 日志语句（popup.js: 67, content.js: 28）\n  • 使用 /tmp/remove_console.js 脚本清理\n\n- 修复语法错误和空代码块\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []

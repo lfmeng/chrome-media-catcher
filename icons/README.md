@@ -1,38 +1,96 @@
 # 图标文件说明
 
-需要添加以下尺寸的图标：
+本目录包含媒体资源捕获器插件的所有图标文件。
 
-- icon16.png (16x16)
-- icon48.png (48x48)
-- icon128.png (128x128)
+## 📦 插件图标
 
-## 临时解决方案
+用于 Chrome 扩展的工具栏图标和应用图标：
 
-可以使用以下在线工具生成图标：
-1. 访问 https://www.favicon-generator.org/
-2. 上传一个图片
-3. 下载生成的图标包
-4. 将图标文件放到此目录
+- **icon16.png** (16x16) - 浏览器工具栏小图标
+- **icon48.png** (48x48) - 扩展管理页面图标
+- **icon128.png** (128x128) - Chrome Web Store 图标
+- **icon.svg** - SVG 矢量格式（用于进一步编辑）
 
-## 图标设计建议
+### 图标设计
 
-- 使用 📷 或 🎬 作为图标主题
-- 主色调使用渐变紫色 (#667eea → #764ba2)
-- 简洁的设计风格
+- **主题**：相机 + 下载箭头（象征媒体捕获）
+- **配色**：紫色渐变 (#667eea → #764ba2)
+- **风格**：现代简约，圆角矩形背景
 
-## SVG 格式
+## 🖼️ 默认占位图
 
-如果需要矢量图标，可以使用以下 SVG 代码：
+当图片加载失败时显示的占位图：
 
-```svg
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  <rect width="128" height="128" rx="20" fill="url(#grad)"/>
-  <text x="64" y="64" font-size="64" text-anchor="middle" dy=".3em">📷</text>
-</svg>
+- **placeholder-200x150.png** - 小尺寸（缩略图）
+- **placeholder-400x300.png** - 中等尺寸（预览图）
+- **placeholder-800x600.png** - 大尺寸（高清图）
+
+### 占位图设计
+
+- **内容**：山形图标 + 圆形太阳 + 提示文字
+- **配色**：浅灰色背景 (#f5f5f5)，灰色图标
+- **用途**：图片加载失败时的友好提示
+
+## 🔄 重新生成图标
+
+如需修改图标设计，可以使用项目根目录下的 `generate-icons.py` 脚本：
+
+```bash
+cd /Users/menglingfei/Public/code/vue/chrome-media-catcher
+python3 generate-icons.py
 ```
+
+### 脚本功能
+
+- 自动生成 3 个尺寸的插件图标（16/48/128px）
+- 生成 3 个尺寸的默认占位图
+- 生成 SVG 矢量格式便于编辑
+- 支持自定义颜色和设计
+
+## 📝 技术细节
+
+### 插件图标
+
+- 使用 Pillow 库绘制
+- 圆角矩形背景（半径为尺寸的 1/5）
+- 白色线条图标（相机 + 下载箭头）
+- 渐变紫色背景
+
+### 默认占位图
+
+- 浅灰色背景 + 灰色边框
+- 山形图标（SVG 风格绘制）
+- 圆形太阳图标
+- "图片加载失败" 文字提示
+
+## 🎨 使用场景
+
+### 插件图标
+- Chrome 工具栏
+- 扩展管理页面
+- Chrome Web Store
+
+### 默认占位图
+- 图片缩略图加载失败时
+- 网络错误时显示
+- CORS 限制无法加载时
+
+## 📚 相关文件
+
+- **manifest.json** - 图标配置文件
+- **popup.js** - 占位图使用逻辑
+- **popup.css** - 占位图样式定义
+- **generate-icons.py** - 图标生成脚本
+
+## ⚠️ 注意事项
+
+1. 所有图标均为 PNG 格式，支持透明背景
+2. SVG 文件可用于进一步编辑或导出其他尺寸
+3. 修改图标后需重新加载插件才能看到效果
+4. 占位图路径在 popup.js 中配置（相对路径）
+
+---
+
+**最后更新**：2026-02-05
+**生成工具**：generate-icons.py (Python + Pillow)
+
