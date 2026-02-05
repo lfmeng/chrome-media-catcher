@@ -5,6 +5,7 @@ let capturedImages = [];
 let capturedVideos = [];
 let capturedAudios = [];
 let selectedImages = new Set(); // 🔥 存储选中的图片索引
+let selectedVideos = new Set(); // 🔥 存储选中的视频索引
 let currentImageFilter = 'all'; // 🔥 当前图片类型筛选
 let streamGroupHelper = new StreamGroupHelper(); // 🔥 视频流分组助手
 let translator = null; // 🔥 翻译器实例
@@ -125,13 +126,11 @@ function setupEventListeners() {
 
   // 🔥 新增：批量下载选中图片
   downloadSelectedImagesBtn.addEventListener('click', () => {
-    console.log('下载选中按钮被点击');
     downloadSelectedImages();
   });
 
   // 🔥 新增：批量删除选中图片
   deleteSelectedImagesBtn.addEventListener('click', () => {
-    console.log('删除选中按钮被点击');
     deleteSelectedImages();
   });
 
@@ -175,17 +174,47 @@ function setupEventListeners() {
   });
 
   videosList.addEventListener('click', (e) => {
-    const btn = e.target.closest('.btn-icon');
-    if (!btn) return;
+    // 🔥 先尝试找最近的按钮元素（包括被点击的元素本身）
+    let clickedBtn = e.target;
+    if (!clickedBtn.classList.contains('btn-icon')) {
+      clickedBtn = clickedBtn.closest('.btn-icon');
+    }
 
-    const item = btn.closest('.video-player-wrapper');
-    const index = parseInt(item.dataset.index);
+    if (!clickedBtn) return;
 
+    const btn = clickedBtn;
+    const playerWrapper = btn.closest('.video-player-wrapper');
+
+    // 🔥 处理新窗口打开
+    if (btn.classList.contains('open-new-tab')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = btn.dataset.url;
+      if (url) {
+        chrome.tabs.create({ url: url });
+      }
+      return;
+    }
+
+    // 🔥 处理下载
     if (btn.classList.contains('download')) {
       const url = btn.dataset.url;
-      downloadMedia(url, index, 'video');
-    } else if (btn.classList.contains('delete')) {
-      deleteVideo(index);
+      if (playerWrapper) {
+        const index = parseInt(playerWrapper.dataset.index);
+        if (url) {
+          downloadMedia(url, index, 'video');
+        }
+      }
+      return;
+    }
+
+    // 🔥 处理删除
+    if (btn.classList.contains('delete')) {
+      if (playerWrapper) {
+        const index = parseInt(playerWrapper.dataset.index);
+        deleteVideo(index);
+      }
+      return;
     }
   });
 
@@ -193,14 +222,37 @@ function setupEventListeners() {
     const btn = e.target.closest('.btn-icon');
     if (!btn) return;
 
-    const item = btn.closest('.media-item');
-    const index = parseInt(item.dataset.index);
+    // 处理流媒体音频（九宫格布局）
+    const gridItem = btn.closest('.grid-item');
+    const mediaItem = btn.closest('.media-item');
 
-    if (btn.classList.contains('download')) {
-      const url = item.querySelector('.media-url').textContent;
-      downloadMedia(url, index, 'audio');
+    if (btn.classList.contains('play') || btn.classList.contains('download')) {
+      // 播放按钮和下载按钮都触发下载
+      const url = btn.dataset.url;
+      if (gridItem) {
+        // 流媒体音频
+        const index = parseInt(gridItem.dataset.index);
+        if (url) {
+          downloadMedia(url, index, 'audio');
+        }
+      } else if (mediaItem) {
+        // 普通音频
+        const index = parseInt(mediaItem.dataset.index);
+        const url = mediaItem.querySelector('.media-url').textContent;
+        if (url) {
+          downloadMedia(url, index, 'audio');
+        }
+      }
     } else if (btn.classList.contains('delete')) {
-      deleteMedia(index, 'audio');
+      if (gridItem) {
+        // 流媒体音频
+        const index = parseInt(gridItem.dataset.index);
+        deleteMedia(index, 'audio');
+      } else if (mediaItem) {
+        // 普通音频
+        const index = parseInt(mediaItem.dataset.index);
+        deleteMedia(index, 'audio');
+      }
     }
   });
 
@@ -279,7 +331,6 @@ function startCapture(type) {
   // 向当前标签页注入内容脚本
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]) {
-      console.log(`🎯 开始捕获 ${type}...`);
       chrome.tabs.sendMessage(
         tabs[0].id,
         {
@@ -288,9 +339,7 @@ function startCapture(type) {
         },
         (response) => {
           if (chrome.runtime.lastError) {
-            console.error('发送消息失败:', chrome.runtime.lastError);
           } else {
-            console.log(`✅ 开始捕获 ${type} 成功`);
           }
         }
       );
@@ -302,7 +351,6 @@ function startCapture(type) {
 function stopCapture(type) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]) {
-      console.log(`⏹ 停止捕获 ${type}...`);
       chrome.tabs.sendMessage(
         tabs[0].id,
         {
@@ -311,9 +359,7 @@ function stopCapture(type) {
         },
         (response) => {
           if (chrome.runtime.lastError) {
-            console.error('发送消息失败:', chrome.runtime.lastError);
           } else {
-            console.log(`✅ 停止捕获 ${type} 成功`);
           }
         }
       );
@@ -379,7 +425,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           updateImagesList();
           saveCapturedData();
         } else {
-          console.log('🚫 过滤掉非图片内容:', media.url, 'isVideo:', isVideo, 'isNonImage:', isNonImage, 'isJsBundle:', isJsBundle);
         }
       }
     } else if (type === 'audio') {
@@ -397,7 +442,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const relatedVideos = streamGroupHelper.findRelatedVideo(media.url, capturedVideos.map(v => v.url));
         if (relatedVideos.length > 0) {
           media.relatedVideos = relatedVideos;
-          console.log(`🔗 音频关联到 ${relatedVideos.length} 个视频:`, media.url);
         }
 
         capturedAudios.push(media);
@@ -405,8 +449,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         saveCapturedData();
       }
     } else if (type === 'video') {
-      // 🔥 检查是否重复
-      const isDuplicate = capturedVideos.some(vid => vid.url === media.url);
+      // 🔥 标准化 URL 以便检测重复（移除常见的时间戳等无关参数）
+      const normalizedUrl = normalizeVideoUrl(media.url);
+
+      // 🔥 检查是否重复（使用标准化后的 URL）
+      const isDuplicate = capturedVideos.some(vid => normalizeVideoUrl(vid.url) === normalizedUrl);
+
       if (!isDuplicate) {
         // 🔥 过滤掉 JavaScript bundle 文件
         const urlLower = media.url.toLowerCase();
@@ -418,31 +466,95 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const isJsBundle = jsBundlePatterns.some(pattern => urlLower.includes(pattern));
 
         if (!isJsBundle) {
-          // 🔥 添加到视频流分组
-          streamGroupHelper.addToGroup(media.url, 'video');
-          
-          // 🔥 分析流信息
-          const streamInfo = streamGroupHelper.analyzeStreamComposition(media.url, 'video');
-          media.streamInfo = streamInfo;
+          // 🔥 过滤掉只有音频或只有视频的流媒体文件
+          const audioOnlyExtensions = ['.m4a', '.aac', '.mp3', '.wav', '.ogg', '.flac', '.ac3', '.wma', '.opus', '.aiff', '.aif', '.aifc', '.amr', '.3ga'];
+          const videoOnlyExtensions = ['.m4v', '.h264', '.h265', '.hevc', '.avc', '.vc1', '.vp8', '.vp9', '.av1', '.mv4'];
 
-          // 查找相关的音频
-          const relatedAudios = streamGroupHelper.findRelatedAudio(media.url, capturedAudios.map(a => a.url));
-          if (relatedAudios.length > 0) {
-            media.relatedAudios = relatedAudios;
-            console.log(`🔗 视频关联到 ${relatedAudios.length} 个音频:`, media.url);
+          const urlLower = media.url.toLowerCase();
+          const contentType = (media.type || '').toLowerCase();
+
+          // 🔥 多重检测机制
+          let isAudioOnly = audioOnlyExtensions.some(ext => urlLower.includes(ext));
+          let isVideoOnly = videoOnlyExtensions.some(ext => urlLower.includes(ext));
+
+          // 🔥 通过 URL 路径关键词检测
+          const audioKeywords = ['/audio/', '/sound/', '/voice/', 'audio_only', 'audio-only', '/aud/', 'audonly', 'audiostream'];
+          const videoOnlyKeywords = ['/video_only/', 'video-only', 'video_only', 'mute', 'silent', '/vidonly/', 'videoonly'];
+
+          isAudioOnly = isAudioOnly || audioKeywords.some(keyword => urlLower.includes(keyword));
+          isVideoOnly = isVideoOnly || videoOnlyKeywords.some(keyword => urlLower.includes(keyword));
+
+          // 🔥 通过 Content-Type 检测
+          if (contentType) {
+            if (contentType.startsWith('audio/') && !contentType.includes('video')) {
+              isAudioOnly = true;
+            }
+            if (contentType.includes('video') && contentType.includes('only')) {
+              isVideoOnly = true;
+            }
           }
 
-          capturedVideos.push(media);
-          updateVideosList();
-          saveCapturedData();
+          // 🔥 检查 URL 参数中是否有 audio_only 或 video_only 标记
+          try {
+            const urlObj = new URL(media.url);
+            if (urlObj.searchParams.has('audio_only') || urlObj.searchParams.has('audio-only')) {
+              isAudioOnly = true;
+            }
+            if (urlObj.searchParams.has('video_only') || urlObj.searchParams.has('video-only') || urlObj.searchParams.has('mute')) {
+              isVideoOnly = true;
+            }
+
+            // 🔥 流媒体特殊检测：检查路径中包含 audio/video 标记
+            const pathname = urlObj.pathname.toLowerCase();
+            if (pathname.includes('/audio/') || pathname.includes('/audio_') ||
+                pathname.includes('-audio-') || pathname.includes('.audio.')) {
+              isAudioOnly = true;
+            }
+            if (pathname.includes('/video_only/') || pathname.includes('-videoonly-') ||
+                pathname.includes('/mute/') || pathname.includes('-mute-')) {
+              isVideoOnly = true;
+            }
+          } catch (e) {
+            // URL 解析失败，忽略
+          }
+
+          // 🔥 特殊检测：检查文件名模式
+          const filename = urlLower.substring(urlLower.lastIndexOf('/') + 1);
+          if (filename.match(/^audio/)) {
+            isAudioOnly = true;
+          }
+          if (filename.match(/^video.*only/) || filename.match(/mute/)) {
+            isVideoOnly = true;
+          }
+
+          // 只保留包含音视频的完整文件
+          if (!isAudioOnly && !isVideoOnly) {
+            // 🔥 添加到视频流分组
+            streamGroupHelper.addToGroup(media.url, 'video');
+
+            // 🔥 分析流信息
+            const streamInfo = streamGroupHelper.analyzeStreamComposition(media.url, 'video');
+            media.streamInfo = streamInfo;
+
+            // 查找相关的音频
+            const relatedAudios = streamGroupHelper.findRelatedAudio(media.url, capturedAudios.map(a => a.url));
+            if (relatedAudios.length > 0) {
+              media.relatedAudios = relatedAudios;
+            }
+
+            capturedVideos.push(media);
+            updateVideosList();
+            saveCapturedData();
+          } else {
+            // 🔥 视频/音频不完整，不添加到列表中
+          }
         } else {
-          console.log('🚫 过滤掉 JavaScript bundle (视频):', media.url);
+          // JavaScript bundle，不添加
         }
       }
     }
   } else if (message.action === 'autoCaptureStarted') {
     // 🔥 自动捕获已启动，更新UI状态
-    console.log('🚀 自动捕获已启动:', message);
 
     if (message.images) {
       captureImagesBtn.textContent = '停止捕获';
@@ -520,7 +632,168 @@ function isMP4Video(video) {
 
   return url.includes('.mp4') ||
          type.includes('mp4') ||
-         type === 'video/mp4';
+         type.includes('webm') ||
+         url.includes('.webm');
+}
+
+// 🔥 判断是否为流媒体格式
+// 🔥 判断是否为流媒体格式（更严格的检测）
+function isStreamingVideo(url) {
+  const urlLower = url.toLowerCase();
+
+  // 🔥 明确的流媒体文件扩展名
+  const streamingExtensions = ['.m3u8', '.m3u', '.mpd', '.dash', '.f4m'];
+
+  // 🔥 检查是否有流媒体扩展名
+  const hasStreamingExt = streamingExtensions.some(ext => {
+    // 检查 pathname 是否以这些扩展名结尾
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname.toLowerCase();
+      return pathname.endsWith(ext);
+    } catch (e) {
+      return urlLower.includes(ext);
+    }
+  });
+
+  // 🔥 检查 .ts 和 .m4s（这些是流分片，但也可能是普通文件）
+  const isFragment = urlLower.includes('.ts') || urlLower.includes('.m4s');
+
+  // 🔥 如果包含明确的流媒体扩展名，或者同时包含多个流分片，才判定为流媒体
+  return hasStreamingExt || isFragment;
+}
+
+// 🔥 检测流媒体类型
+function detectStreamType(url) {
+  const urlLower = url.toLowerCase();
+  if (urlLower.includes('.m3u8') || urlLower.includes('.m3u')) {
+    return 'HLS';
+  } else if (urlLower.includes('.ts')) {
+    return 'TS';
+  } else if (urlLower.includes('.m4s')) {
+    return 'M4S';
+  } else if (urlLower.includes('stream')) {
+    return 'STREAM';
+  }
+  return 'STREAM';
+}
+
+// 🔥 判断是否为流媒体音频
+function isStreamingAudio(url) {
+  const urlLower = url.toLowerCase();
+  return urlLower.includes('.m3u8') ||
+         urlLower.includes('.m3u') ||
+         urlLower.includes('.ts') ||
+         urlLower.includes('.m4s');
+}
+
+// 🔥 检测音频流媒体类型
+function detectAudioStreamType(url) {
+  return detectStreamType(url);
+}
+
+// 🔥 标准化视频 URL（移除无关参数以便检测重复）
+function normalizeVideoUrl(url) {
+  try {
+    const urlObj = new URL(url);
+
+    // 🔥 移除常见的无关参数（这些参数不影响视频内容）
+    const paramsToRemove = [
+      't', 'timestamp', 'time', '_t', '_time', '_ts',
+      'rand', 'random', '_rand', '_random',
+      'nonce', '_nonce',
+      'token', '_token', 'session',
+      'expire', 'expires', '_expire',
+      'signature', 'sig', '_sig',
+      'cache', 'no_cache', 'nocache',
+      'v', 'version', '_v',
+      'ref', 'referer', 'source',
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'fbclid', 'gclid',
+      'mkt_tok', 'msclkid',
+      'idx', 'index', 'i',
+      'id', '_id',
+      'sq', 'sequence', 'seq',
+      'start', 'end',
+      'offset',
+      'quality', 'qual',
+      'profile', 'prof'
+    ];
+
+    paramsToRemove.forEach(param => {
+      urlObj.searchParams.delete(param);
+    });
+
+    // 🔥 对于流媒体 URL（m3u8, mpd, ts 等），移除更多参数
+    const pathname = urlObj.pathname.toLowerCase();
+    const isStreaming = pathname.includes('.m3u8') || pathname.includes('.m3u') ||
+                       pathname.includes('.mpd') || pathname.includes('.ts') ||
+                       pathname.includes('.m4s');
+
+    if (isStreaming) {
+      // 流媒体特有的参数
+      const streamingParamsToRemove = [
+        'm3u8', 'ts', 'segment',
+        'hdnea', 'mnt', 'cn', 'token',
+        'session_id', 'sess_id',
+        'pl', 'play_list',
+        's', 'server',
+        'cdn', 'region'
+      ];
+
+      streamingParamsToRemove.forEach(param => {
+        urlObj.searchParams.delete(param);
+      });
+
+      // 🔥 对于流媒体，只保留关键参数
+      const importantParams = ['format', 'type', 'ext', 'mime'];
+      const allParams = Array.from(urlObj.searchParams.keys());
+      allParams.forEach(param => {
+        if (!importantParams.includes(param.toLowerCase())) {
+          urlObj.searchParams.delete(param);
+        }
+      });
+    }
+
+    // 🔥 对于某些 CDN，移除所有查询参数（因为它们通常用于缓存控制）
+    const hostname = urlObj.hostname.toLowerCase();
+    const removeParamsHosts = [
+      'googlevideo.com',
+      'googleusercontent.com',
+      'ytimg.com',
+      'video.twimg.com',
+      'twimg.com',
+      'fbcdn.net',
+      'instagram.com',
+      'cdn.instagram.com',
+      'cloudflare.com',
+      'cloudfront.net',
+      'akamaihd.net',
+      'amazonaws.com'
+    ];
+
+    const shouldRemoveAllParams = removeParamsHosts.some(host =>
+      hostname.includes(host) || hostname.endsWith('.' + host)
+    );
+
+    if (shouldRemoveAllParams) {
+      // 保留重要的格式参数
+      const formatParam = urlObj.searchParams.get('format');
+      const typeParam = urlObj.searchParams.get('type');
+      const extParam = urlObj.searchParams.get('ext');
+
+      urlObj.search = '';
+
+      if (formatParam) urlObj.searchParams.set('format', formatParam);
+      if (typeParam) urlObj.searchParams.set('type', typeParam);
+      if (extParam) urlObj.searchParams.set('ext', extParam);
+    }
+
+    return urlObj.toString();
+  } catch (e) {
+    // URL 解析失败，返回原始 URL
+    return url;
+  }
 }
 
 // 🔥 从URL提取文件名，并添加正确的扩展名
@@ -681,9 +954,9 @@ function updateImagesList() {
                  ${isSelected ? 'checked' : ''}>
           <label class="grid-checkbox-label"></label>
           <div class="grid-thumbnail" data-url="${img.url}" data-headers='${JSON.stringify(img.requestHeaders || {})}' data-load-id="${loadId}">
-            <img src="${img.url}" alt="${fileName}" crossorigin="anonymous" referrerpolicy="no-referrer" data-load-id="${loadId}" class="lazy-image">
+            <img src="${img.url}" alt="${fileName}" data-load-id="${loadId}" class="lazy-image">
             <div class="placeholder lazy-placeholder" style="display:none;">
-              <span>📷</span>
+              <img src="../icons/placeholder-200x150.png" alt="图片加载失败" class="placeholder-image">
               <span style="font-size:10px;margin-top:4px;">点击加载</span>
             </div>
             <div class="grid-overlay">
@@ -781,12 +1054,105 @@ function updateImagesList() {
 // 🔥 记录当前已渲染的视频 URL（用于增量更新）
 let renderedVideoUrls = new Set();
 
+// 🔥 创建视频元素的辅助函数
+function createVideoElement(video) {
+  const fileName = getFileName(video.url, video.type);
+  const uniqueId = `video-streaming-${video.originalIndex}`;
+  const isStreaming = isStreamingVideo(video.url);
+  const streamType = isStreaming ? detectStreamType(video.url) : null;
+
+  // 计算关联信息
+  let relatedHtml = '';
+  const related = video.relatedAudios || video.relatedVideos;
+  if (related && related.length > 0) {
+    const relatedType = video.relatedAudios ? '音频' : '视频';
+    relatedHtml = '<div style="font-size: 10px; color: #4caf50; padding: 4px; background: #e8f5e9; border-radius: 4px; margin-top: 4px;">🔗 关联 ' + relatedType + ': ' + related.length + ' 个</div>';
+  }
+
+  // 创建包装器
+  const wrapper = document.createElement('div');
+  wrapper.className = 'video-player-wrapper';
+  wrapper.dataset.index = video.originalIndex;
+  wrapper.dataset.url = video.url;
+
+  // 创建视频容器
+  const videoContainer = document.createElement('div');
+  videoContainer.style.position = 'relative';
+
+  // 创建视频元素
+  const videoElement = document.createElement('video');
+  videoElement.id = uniqueId;
+  videoElement.className = isStreaming ? 'video-player streaming-video' : 'video-player';
+  videoElement.preload = 'auto';
+  videoElement.controls = true;
+  videoElement.playsInline = true;
+  videoElement.crossOrigin = 'anonymous';
+
+  // 设置 poster
+  videoElement.poster = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23667eea'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='white' font-size='40'%3E▶%3C/text%3E%3C/svg%3E";
+
+  // 创建 source 元素
+  const source = document.createElement('source');
+  source.src = video.url;
+  source.type = video.type || (isStreaming ? 'application/x-mpegURL' : 'video/mp4');
+  videoElement.appendChild(source);
+  videoElement.appendChild(document.createTextNode('您的浏览器不支持视频播放。'));
+
+  videoContainer.appendChild(videoElement);
+
+  // 添加流媒体徽章
+  if (isStreaming && streamType) {
+    const badge = document.createElement('div');
+    badge.style.cssText = 'position: absolute; top: 8px; right: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 10px; padding: 4px 8px; border-radius: 4px; z-index: 5; font-weight: 600;';
+    badge.textContent = streamType;
+    videoContainer.appendChild(badge);
+  }
+
+  wrapper.appendChild(videoContainer);
+
+  // 创建文件名
+  const filenameDiv = document.createElement('div');
+  filenameDiv.className = 'video-filename';
+  filenameDiv.title = video.url;
+  filenameDiv.textContent = fileName + (relatedHtml ? relatedHtml : '');
+  wrapper.appendChild(filenameDiv);
+
+  // 创建操作按钮容器
+  const actionsDiv = document.createElement('div');
+  actionsDiv.className = 'video-actions';
+
+  // 新窗口按钮
+  const newTabBtn = document.createElement('button');
+  newTabBtn.className = 'btn-icon open-new-tab';
+  newTabBtn.title = '新窗口播放';
+  newTabBtn.dataset.url = video.url;
+  newTabBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v7A1.5 1.5 0 0 0 1.5 13h6.636a.5.5 0 0 0 .5-.5v-1h1v1a1.5 1.5 0 0 1-1.5 1.5H1.5A1.5 1.5 0 0 1 0 11.5v-7A1.5 1.5 0 0 1 1.5 3.5h6.636a.5.5 0 0 0 .5-.5v-1zM7.5 2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1H8a.5.5 0 0 1-.5-.5v-1A1.5 1.5 0 0 1 9 1h1.276a.5.5 0 0 1 0-1H9a2.5 2.5 0 0 0-2.5 2.5v7a2.5 2.5 0 0 0 2.5 2.5h1.276a.5.5 0 0 1 0 1H9a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 9 1h1.276a.5.5 0 0 1 .5-.5v-1z"/></svg><span>新窗口</span>`;
+
+  // 下载按钮
+  const downloadBtn = document.createElement('button');
+  downloadBtn.className = 'btn-icon download';
+  downloadBtn.title = '下载';
+  downloadBtn.dataset.url = video.url;
+  downloadBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>`;
+
+  // 删除按钮
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'btn-icon delete';
+  deleteBtn.title = '删除';
+  deleteBtn.dataset.index = video.originalIndex;
+  deleteBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>`;
+
+  actionsDiv.appendChild(newTabBtn);
+  actionsDiv.appendChild(downloadBtn);
+  actionsDiv.appendChild(deleteBtn);
+  wrapper.appendChild(actionsDiv);
+
+  return wrapper;
+}
+
 // 🔥 更新视频列表 - 增量更新，避免重渲染导致播放中断
 function updateVideosList() {
   videoCount.textContent = capturedVideos.length;
-
-  // 创建或获取视频网格容器
-  let grid = videosList.querySelector('.media-videos-grid');
 
   if (capturedVideos.length === 0) {
     videosList.innerHTML = `
@@ -798,176 +1164,190 @@ function updateVideosList() {
     return;
   }
 
-  // 如果网格容器不存在，创建它
-  if (!grid) {
-    videosList.innerHTML = '<div class="media-videos-grid"></div>';
-    grid = videosList.querySelector('.media-videos-grid');
+  // 🔥 首次渲染时，创建基础结构
+  if (renderedVideoUrls.size === 0) {
+    videosList.innerHTML = '';
+    createVideoGroups();
   }
 
-  // 🔥 增量更新：只添加新视频，保留旧视频的播放状态
-  const currentUrls = new Set(capturedVideos.map(v => v.url));
+  // 🔥 增量更新：只添加新视频
+  capturedVideos.forEach((video, index) => {
+    const normalizedUrl = normalizeVideoUrl(video.url);
+    if (!renderedVideoUrls.has(normalizedUrl)) {
+      // 这是新视频，需要添加
+      const videoWithIndex = { ...video, originalIndex: index };
+      const videoElement = createVideoElement(videoWithIndex);
 
-  // 移除已删除的视频
-  const wrappers = grid.querySelectorAll('.video-player-wrapper');
-  wrappers.forEach(wrapper => {
-    const url = wrapper.dataset.url;
-    if (!currentUrls.has(url)) {
-      wrapper.remove();
-      renderedVideoUrls.delete(url);
+      // 找到对应的容器并添加
+      const isStreaming = isStreamingVideo(video.url);
+      const gridId = isStreaming ? 'streaming-videos-grid' : 'regular-videos-grid';
+      const grid = videosList.querySelector(`#${gridId}`);
+
+      if (grid) {
+        grid.appendChild(videoElement);
+
+        // 如果是流媒体，初始化 HLS
+        if (isStreaming) {
+          const videoEl = videoElement.querySelector('.streaming-video');
+          if (videoEl) {
+            initializeHlsForVideo(videoEl, video.url);
+          }
+        }
+      }
+
+      renderedVideoUrls.add(normalizedUrl);
     }
   });
 
-  // 添加新视频
+  // 🔥 更新分组标题的计数
+  updateGroupCounts();
+}
+
+// 🔥 创建视频分组结构
+function createVideoGroups() {
+  const streamingVideos = [];
+  const regularVideos = [];
+
   capturedVideos.forEach((video, index) => {
-    // 如果这个视频已经渲染过，跳过（保留播放状态）
-    if (renderedVideoUrls.has(video.url)) {
-      // 更新索引（确保删除按钮正确）
-      const existingWrapper = grid.querySelector(`[data-url="${CSS.escape(video.url)}"]`);
-      if (existingWrapper) {
-        existingWrapper.dataset.index = index;
-        const deleteBtn = existingWrapper.querySelector('.delete');
-        if (deleteBtn) {
-          deleteBtn.dataset.index = index;
-        }
-      }
-      return;
+    const videoWithIndex = { ...video, originalIndex: index };
+    if (isStreamingVideo(video.url)) {
+      streamingVideos.push(videoWithIndex);
+    } else {
+      regularVideos.push(videoWithIndex);
     }
+  });
 
-    // 创建新的视频元素
-    const fileName = getFileName(video.url, video.type);
+  let html = '';
 
-    // 计算关联信息
-    let relatedHtml = '';
-    const related = video.relatedAudios || video.relatedVideos;
-    if (related && related.length > 0) {
-      const relatedType = video.relatedAudios ? '音频' : '视频';
-      relatedHtml = '<div style="font-size: 10px; color: #4caf50; padding: 4px; background: #e8f5e9; border-radius: 4px; margin-top: 4px;">🔗 关联 ' + relatedType + ': ' + related.length + ' 个</div>';
-    }
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'video-player-wrapper';
-    wrapper.dataset.index = index;
-    wrapper.dataset.url = video.url;
-
-    wrapper.innerHTML = `
-      <video
-        class="video-player"
-        preload="auto"
-        controls
-        controlsList="nodownload"
-        playsinline
-        poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23667eea'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='white' font-size='40'%3E▶%3C/text%3E%3C/svg%3E">
-        <source src="${video.url}" type="${video.type || 'video/mp4'}">
-        您的浏览器不支持视频播放。
-      </video>
-      <div class="video-filename" title="${video.url}">${fileName}${relatedHtml}</div>
-      <div class="video-actions">
-        <button class="btn-icon download" title="下载" data-url="${video.url}">
-          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
-        </button>
-        <button class="btn-icon delete" title="删除" data-index="${index}">
-          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
-        </button>
+  // 流媒体视频分组
+  if (streamingVideos.length > 0) {
+    html += `
+      <div class="media-group" id="streaming-group">
+        <div class="group-header">
+          <span class="group-title">🎬 流媒体视频 (<span id="streaming-count">${streamingVideos.length}</span>)</span>
+          <div class="group-info">
+            <span class="group-count">HLS/m3u8/TS/M4S</span>
+            <svg class="group-arrow" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M6 8L2 4h8z"/>
+            </svg>
+          </div>
+        </div>
+        <div class="media-videos-grid" id="streaming-videos-grid">
+        </div>
       </div>
     `;
+  }
 
-    grid.appendChild(wrapper);
-    renderedVideoUrls.add(video.url);
+  // 普通视频分组
+  if (regularVideos.length > 0) {
+    html += `
+      <div class="media-group" id="regular-group">
+        <div class="group-header">
+          <span class="group-title">📹 普通视频 (<span id="regular-count">${regularVideos.length}</span>)</span>
+          <div class="group-info">
+            <span class="group-count">MP4/WEBM</span>
+            <svg class="group-arrow" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M6 8L2 4h8z"/>
+            </svg>
+          </div>
+        </div>
+        <div class="media-videos-grid" id="regular-videos-grid">
+        </div>
+      </div>
+    `;
+  }
 
-    // 🔥 为新视频添加多种错误检测
-    const videoElement = wrapper.querySelector('video');
-    let hasError = false;
-    let hasPlayed = false;
-    let deleteTimeout = null;
+  videosList.innerHTML = html;
 
-    const scheduleDelete = (reason) => {
-      if (hasError || deleteTimeout) return; // 避免重复删除
+  // 初始化所有现有视频
+  [...streamingVideos, ...regularVideos].forEach(video => {
+    const normalizedUrl = normalizeVideoUrl(video.url);
+    renderedVideoUrls.add(normalizedUrl);
+    const videoElement = createVideoElement(video);
+    const isStreaming = isStreamingVideo(video.url);
+    const gridId = isStreaming ? 'streaming-videos-grid' : 'regular-videos-grid';
+    const grid = videosList.querySelector(`#${gridId}`);
 
-      // 🔥 只对 MP4 格式进行自动删除
-      if (!isMP4Video(video)) {
-        console.log(`ℹ️ 非 MP4 格式，跳过自动删除:`, video.url);
-        return;
-      }
+    if (grid) {
+      grid.appendChild(videoElement);
 
-      hasError = true;
-      console.warn(`⚠️ 视频异常 (${reason}):`, video.url);
-
-      // 延迟删除，给用户看一眼错误提示
-      deleteTimeout = setTimeout(() => {
-        const indexToDelete = capturedVideos.findIndex(v => v.url === video.url);
-        if (indexToDelete !== -1) {
-          console.log('🗑️ 自动删除无法播放的视频:', video.url, `原因: ${reason}`);
-          capturedVideos.splice(indexToDelete, 1);
-          renderedVideoUrls.delete(video.url);
-          saveCapturedData();
-          updateVideosList();
-          showNotification(`已自动删除无法播放的MP4 (${reason})`, 'warning');
-        }
-      }, 2000); // 2秒后删除
-    };
-
-    // 1. 监听加载失败
-    videoElement.addEventListener('error', (e) => {
-      scheduleDelete('加载失败');
-    });
-
-    // 2. 监听播放停滞（数据加载停滞）
-    videoElement.addEventListener('stalled', (e) => {
-      if (videoElement.readyState < 3 && !hasPlayed) {
-        scheduleDelete('播放停滞');
-      }
-    });
-
-    // 3. 监听加载挂起
-    videoElement.addEventListener('suspend', (e) => {
-      if (videoElement.readyState < 3 && !hasPlayed) {
-        scheduleDelete('加载挂起');
-      }
-    });
-
-    // 4. 监听 abort（加载被中止）
-    videoElement.addEventListener('abort', (e) => {
-      scheduleDelete('加载中止');
-    });
-
-    // 5. 检测网络状态异常
-    const originalNetworkState = videoElement.networkState;
-    setTimeout(() => {
-      if (videoElement.networkState === HTMLMediaElement.NETWORK_NO_SOURCE && !hasPlayed) {
-        scheduleDelete('无视频源');
-      }
-    }, 3000);
-
-    // 6. 检测是否能播放（超时检测）
-    setTimeout(() => {
-      if (!hasPlayed && videoElement.readyState < 3 && !hasError) {
-        // 尝试播放
-        const playPromise = videoElement.play();
-        if (playPromise) {
-          playPromise.catch(err => {
-            console.log('播放失败:', err);
-            scheduleDelete('无法播放');
-          });
+      // 如果是流媒体，初始化 HLS
+      if (isStreaming) {
+        const videoEl = videoElement.querySelector('.streaming-video');
+        if (videoEl) {
+          initializeHlsForVideo(videoEl, video.url);
         }
       }
-    }, 2000);
-
-    // 7. 监听播放成功（标记为可播放）
-    videoElement.addEventListener('playing', () => {
-      hasPlayed = true;
-      if (deleteTimeout) {
-        clearTimeout(deleteTimeout);
-        deleteTimeout = null;
-      }
-    });
-
-    videoElement.addEventListener('canplay', () => {
-      if (deleteTimeout && !hasError) {
-        clearTimeout(deleteTimeout);
-        deleteTimeout = null;
-      }
-    });
+    }
   });
+}
+
+// 🔥 更新分组计数
+function updateGroupCounts() {
+  const streamingCount = capturedVideos.filter(v => isStreamingVideo(v.url)).length;
+  const regularCount = capturedVideos.length - streamingCount;
+
+  const streamingCountEl = videosList.querySelector('#streaming-count');
+  const regularCountEl = videosList.querySelector('#regular-count');
+
+  if (streamingCountEl) streamingCountEl.textContent = streamingCount;
+  if (regularCountEl) regularCountEl.textContent = regularCount;
+}
+
+// 🔥 为单个视频初始化 HLS
+function initializeHlsForVideo(videoElement, url) {
+  if (!url.includes('.m3u8') && !url.includes('.m3u')) {
+    return;
+  }
+
+  setTimeout(() => {
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      try {
+        const hls = new Hls({
+          debug: false,
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 90
+        });
+
+        hls.loadSource(url);
+        hls.attachMedia(videoElement);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+          videoElement.play().catch(err => {
+            // 静默处理自动播放失败
+          });
+        });
+
+        hls.on(Hls.Events.ERROR, function(event, data) {
+          if (data.fatal) {
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                hls.recoverMediaError();
+                break;
+              default:
+                break;
+            }
+          }
+        });
+
+        videoElement._hls = hls;
+      } catch (error) {
+        // hls.js 初始化失败
+      }
+    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari 原生支持 HLS
+      videoElement.src = url;
+      videoElement.addEventListener('loadedmetadata', function() {
+        videoElement.play().catch(err => {
+          // 静默处理自动播放失败
+        });
+      });
+    }
+  }, 100);
 }
 
 // 🔥 显示通知提示
@@ -1010,6 +1390,7 @@ function deleteVideo(index) {
   updateVideosList();
   saveCapturedData();
 }
+// 🔥 更新音频列表 - 支持九宫格布局
 function updateAudiosList() {
   audioCount.textContent = capturedAudios.length;
 
@@ -1022,26 +1403,147 @@ function updateAudiosList() {
     return;
   }
 
-  audiosList.innerHTML = capturedAudios.map((audio, index) => `
-    <div class="media-item" data-index="${index}">
-      <div class="media-thumbnail">
-        <div class="placeholder">🎵</div>
+  // 🔥 分离流媒体音频和普通音频
+  const streamingAudios = [];
+  const regularAudios = [];
+
+  capturedAudios.forEach((audio, index) => {
+    const audioWithIndex = { ...audio, originalIndex: index };
+    // 检查是否为流媒体格式
+    if (isStreamingAudio(audio.url)) {
+      streamingAudios.push(audioWithIndex);
+    } else {
+      regularAudios.push(audioWithIndex);
+    }
+  });
+
+  let html = '';
+
+  // 🔥 渲染流媒体音频（使用播放器布局）
+  if (streamingAudios.length > 0) {
+    html += `
+      <div class="media-group">
+        <div class="group-header">
+          <span class="group-title">🎵 流媒体音频 (${streamingAudios.length})</span>
+          <div class="group-info">
+            <span class="group-count">HLS/TS/M4S</span>
+            <svg class="group-arrow" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M6 8L2 4h8z"/>
+            </svg>
+          </div>
+        </div>
+        <div class="media-videos-grid">
+    `;
+
+    html += streamingAudios.map(audio => {
+      const fileName = getFileName(audio.url, audio.type);
+
+      // 计算关联信息
+      let relatedHtml = '';
+      if (audio.relatedVideos && audio.relatedVideos.length > 0) {
+        relatedHtml = '<div style="font-size: 10px; color: #4caf50; padding: 4px; background: #e8f5e9; border-radius: 4px; margin-top: 4px;">🔗 关联视频: ' + audio.relatedVideos.length + ' 个</div>';
+      }
+
+      // 检测流格式类型
+      const streamType = detectAudioStreamType(audio.url);
+      const streamBadge = `<div style="position: absolute; top: 8px; right: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 10px; padding: 4px 8px; border-radius: 4px; z-index: 5; font-weight: 600;">${streamType}</div>`;
+
+      return `
+        <div class="video-player-wrapper" data-index="${audio.originalIndex}" data-url="${audio.url}">
+          <div style="position: relative; width: 100%; height: 200px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center;">
+            ${streamBadge}
+            <div style="color: white; text-align: center;">
+              <div style="font-size: 64px; margin-bottom: 12px;">🎵</div>
+              <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">${streamType} 流媒体音频</div>
+              <div style="font-size: 12px; opacity: 0.9;">点击下方按钮下载</div>
+            </div>
+          </div>
+          <div class="video-filename" title="${audio.url}">${fileName}${relatedHtml}</div>
+          <div class="video-actions">
+            <button class="btn-icon download" title="下载音频" data-url="${audio.url}">
+              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+              <span>下载</span>
+            </button>
+            <button class="btn-icon delete" title="删除" data-index="${audio.originalIndex}">
+              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+              <span>删除</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    html += `
+        </div>
       </div>
-      <div class="media-info">
-        <div class="media-url">${audio.url}</div>
-        <div class="media-size">${audio.size || '未知大小'}</div>
-        <span class="media-type">${audio.type || 'audio'}</span>
+    `;
+  }
+
+  // 🔥 渲染普通音频（列表布局）
+  if (regularAudios.length > 0) {
+    html += `
+      <div class="media-group">
+        <div class="group-header">
+          <span class="group-title">🎵 普通音频 (${regularAudios.length})</span>
+          <div class="group-info">
+            <span class="group-count">MP3/AAC</span>
+            <svg class="group-arrow" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M6 8L2 4h8z"/>
+            </svg>
+          </div>
+        </div>
+        <div class="regular-media-list">
+    `;
+
+    html += regularAudios.map((audio, index) => `
+      <div class="media-item" data-index="${index}">
+        <div class="media-thumbnail">
+          <div class="placeholder">🎵</div>
+        </div>
+        <div class="media-info">
+          <div class="media-url">${audio.url}</div>
+          <div class="media-size">${audio.size || '未知大小'}</div>
+          <span class="media-type">${audio.type || 'audio'}</span>
+        </div>
+        <div class="media-actions">
+          <button class="btn-icon download" title="下载" data-url="${audio.url}">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+          </button>
+          <button class="btn-icon delete" title="删除" data-index="${index}">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="media-actions">
-        <button class="btn-icon download" title="下载">
-          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
-        </button>
-        <button class="btn-icon delete" title="删除">
-          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
-        </button>
+    `).join('');
+
+    html += `
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }
+
+  audiosList.innerHTML = html;
+
+  // 🔥 绑定事件
+  const audioDeleteBtns = audiosList.querySelectorAll('.delete');
+  audioDeleteBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const index = parseInt(e.currentTarget.dataset.index);
+      if (!isNaN(index)) {
+        deleteAudio(index);
+      }
+    });
+  });
+
+  const audioDownloadBtns = audiosList.querySelectorAll('.download');
+  audioDownloadBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const url = e.currentTarget.dataset.url;
+      if (url) {
+        handleDownload(url);
+      }
+    });
+  });
 }
 
 // 预览媒体
@@ -1072,7 +1574,6 @@ function openVideoModal(videoUrl, videoType) {
   // 加载并播放视频
   videoPlayer.load();
   videoPlayer.play().catch(err => {
-    console.log('自动播放失败，可能需要用户交互:', err);
   });
 
   // 阻止事件冒泡
@@ -1106,18 +1607,14 @@ document.addEventListener('keydown', (e) => {
 
 // 下载单个媒体
 async function downloadMedia(url, index, type) {
-  console.log('🔄 开始下载:', { url, type });
 
   // 🔥 如果是视频，检查是否为流媒体格式
   if (type === 'video') {
     const downloader = new StreamVideoDownloader();
     const streamType = downloader.detectStreamType(url);
 
-    console.log('🔍 视频类型检测结果:', streamType);
-    console.log('🔍 是否为流媒体:', downloader.isStreamUrl(url));
 
     if (downloader.isStreamUrl(url)) {
-      console.log('🎬 检测到流媒体视频，开始处理:', url);
 
       // 显示进度提示
       const progress = document.getElementById('downloadProgress');
@@ -1140,7 +1637,6 @@ async function downloadMedia(url, index, type) {
           throw new Error('无法获取当前标签页信息');
         }
 
-        console.log('📍 当前标签页:', currentTab.url);
 
         // 🔥 通过 background script 获取 Cookie（因为 popup 可能没有 cookies 权限）
         const cookies = await new Promise((resolve) => {
@@ -1157,11 +1653,9 @@ async function downloadMedia(url, index, type) {
 
         // 转换 Cookie 为格式字符串
         const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-        console.log('🍪 获取到 Cookie 数量:', cookies.length);
 
         // 下载并处理流媒体（传递 Cookie 和 UA）
         const result = await downloader.download(url, ({ type: msgType, percent, message }) => {
-          console.log(`📊 [${msgType}]`, message);
 
           if (msgType === 'progress') {
             progressText.textContent = `${message} (${percent}%)`;
@@ -1175,7 +1669,6 @@ async function downloadMedia(url, index, type) {
           referer: currentTab.url
         });
 
-        console.log('✅ 下载完成:', result);
 
         if (result.success) {
           progressText.textContent = '下载完成！';
@@ -1195,7 +1688,6 @@ async function downloadMedia(url, index, type) {
           } else {
             // ✅ 成功转换为 MP4
             setTimeout(() => {
-              console.log('✅ 已成功下载 MP4 文件:', result.filename);
             }, 500);
           }
 
@@ -1206,8 +1698,6 @@ async function downloadMedia(url, index, type) {
         }
 
       } catch (error) {
-        console.error('❌ 流媒体下载失败:', error);
-        console.error('❌ 错误堆栈:', error.stack);
 
         const errorMsg = error.message || '未知错误';
         alert(`❌ 流媒体下载失败！\n\n错误信息: ${errorMsg}\n\n可能的原因：\n1. Native Host 未安装\n2. FFmpeg 未安装\n3. 网络连接问题\n\n解决方案：\ncd native_host\n./install.sh\n\n将尝试使用浏览器直接下载。`);
@@ -1222,12 +1712,10 @@ async function downloadMedia(url, index, type) {
 
       return;
     } else {
-      console.log('ℹ️ 非流媒体视频，使用浏览器直接下载');
     }
   }
 
   // 非流媒体或非视频，使用浏览器直接下载
-  console.log('📥 使用浏览器直接下载:', url);
 
   // 🔥 查找媒体对象的请求头信息
   const mediaItem = [...capturedImages, ...capturedVideos, ...capturedAudios].find(m => m.url === url);
@@ -1235,7 +1723,6 @@ async function downloadMedia(url, index, type) {
 
   // 🔥 通过background script下载（绕过CORS）
   try {
-    console.log('🔐 发送下载请求到background:', requestHeaders?.referer);
 
     // 发送消息到background script进行下载
     const response = await new Promise((resolve) => {
@@ -1252,13 +1739,10 @@ async function downloadMedia(url, index, type) {
     });
 
     if (response && response.success) {
-      console.log('✅ 下载成功:', response.filename);
     } else {
       throw new Error(response?.error || '下载失败');
     }
   } catch (error) {
-    console.error('❌ Background下载失败:', error);
-    console.log('🔄 降级到chrome.downloads.download（不支持请求头）');
 
     // 降级方案：使用chrome.downloads.download
     chrome.downloads.download({
@@ -1298,14 +1782,12 @@ function extractFileName(url) {
 
     return fileName;
   } catch (e) {
-    console.error('❌ 解析URL失败:', e);
     return `download_${Date.now()}`;
   }
 }
 
 // 🔥 通过background script下载文件（绕过CORS）
 async function fetchViaBackground(url, requestHeaders) {
-  console.log('📥 通过background下载:', url);
 
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
@@ -1383,22 +1865,18 @@ async function downloadAll(type) {
           const downloader = new StreamVideoDownloader();
 
           if (downloader.isStreamUrl(item.url)) {
-            console.log(`🎬 [${i + 1}/${total}] 检测到流媒体:`, item.url);
             progressText.textContent = `正在处理第 ${i + 1}/${total} 个视频...`;
 
             try {
               // 下载并处理流媒体
               const result = await downloader.download(item.url, ({ type, percent, message }) => {
-              console.log(`  [${type}] ${message}`);
             });
 
               if (result.success) {
                 blob = result.blob;
                 fileName = result.filename;
-                console.log(`✅ [${i + 1}/${total}] 处理成功:`, fileName);
               }
             } catch (convertError) {
-              console.error(`❌ [${i + 1}/${total}] 处理失败:`, convertError);
               // 处理失败，跳过此文件
               throw convertError;
             }
@@ -1427,7 +1905,6 @@ async function downloadAll(type) {
         folder.file(fileName, blob);
 
       } catch (err) {
-        console.error(`下载文件失败: ${item.url}`, err);
         // 继续下载下一个文件
       }
     }
@@ -1483,7 +1960,6 @@ async function downloadAll(type) {
     }, 500);
 
   } catch (error) {
-    console.error('批量下载失败:', error);
     alert('批量下载失败，请重试');
     progress.classList.remove('active');
   }
@@ -1589,9 +2065,12 @@ function clearList(type) {
 
 // 保存捕获的数据
 function saveCapturedData() {
+  // 🔥 保存前过滤不完整的视频
+  const filteredVideos = filterIncompleteVideos(capturedVideos);
+
   chrome.storage.local.set({
     capturedImages,
-    capturedVideos,
+    capturedVideos: filteredVideos,
     capturedAudios
   });
 }
@@ -1655,7 +2134,6 @@ async function loadImagePreview(placeholderElement) {
       throw new Error(response?.error || '加载失败');
     }
   } catch (error) {
-    console.error('加载图片失败:', error);
     placeholderElement.innerHTML = '<span>❌</span><span style="font-size:10px;margin-top:4px;">加载失败</span>';
   }
 }
@@ -1695,14 +2173,11 @@ async function downloadSelectedImages() {
 
           zip.file(fileName, blob);
           count++;
-          console.log(`✅ 已添加第 ${count} 张图片:`, fileName);
         } catch (err) {
-          console.warn('下载图片失败:', image.url, err);
         }
       }
     }
 
-    console.log(`📦 总共添加了 ${count} 张图片到 ZIP`);
 
     if (count === 0) {
       alert('没有成功下载任何图片');
@@ -1710,14 +2185,12 @@ async function downloadSelectedImages() {
     }
 
     // 生成ZIP
-    console.log('🔄 正在生成 ZIP 文件...');
     const zipBlob = await zip.generateAsync({
       type: 'blob',
       compression: 'DEFLATE',
       compressionOptions: { level: 6 }
     });
 
-    console.log('✅ ZIP 文件生成完成，大小:', zipBlob.size, '字节');
 
     // 触发下载
     const url = URL.createObjectURL(zipBlob);
@@ -1734,15 +2207,12 @@ async function downloadSelectedImages() {
     updateImagesList();
 
   } catch (error) {
-    console.error('批量下载失败:', error);
     alert('批量下载失败: ' + error.message);
   }
 }
 
 // 🔥 批量删除选中的图片
 function deleteSelectedImages() {
-  console.log('deleteSelectedImages 被调用');
-  console.log('当前选中的图片数量:', selectedImages.size);
 
   if (selectedImages.size === 0) {
     alert('请先选择要删除的图片');
@@ -1755,13 +2225,11 @@ function deleteSelectedImages() {
 
   // 将索引转为数组并降序排列（从后往前删除，避免索引变化）
   const indexesToDelete = Array.from(selectedImages).sort((a, b) => b - a);
-  console.log('要删除的索引:', indexesToDelete);
 
   indexesToDelete.forEach(index => {
     capturedImages.splice(index, 1);
   });
 
-  console.log('删除后剩余图片数量:', capturedImages.length);
 
   // 清空选择并更新列表
   selectedImages.clear();
@@ -1777,13 +2245,96 @@ function loadCapturedData() {
       updateImagesList();
     }
     if (result.capturedVideos) {
-      capturedVideos = result.capturedVideos;
+      // 🔥 加载时也过滤不完整的视频
+      capturedVideos = filterIncompleteVideos(result.capturedVideos);
       updateVideosList();
     }
     if (result.capturedAudios) {
       capturedAudios = result.capturedAudios;
       updateAudiosList();
     }
+  });
+}
+
+// 🔥 过滤不完整的视频（只有音频或只有视频）
+function filterIncompleteVideos(videos) {
+  if (!Array.isArray(videos)) return [];
+
+  const audioOnlyExtensions = ['.m4a', '.aac', '.mp3', '.wav', '.ogg', '.flac', '.ac3', '.wma', '.opus', '.aiff', '.aif', '.aifc', '.amr', '.3ga'];
+  const videoOnlyExtensions = ['.m4v', '.h264', '.h265', '.hevc', '.avc', '.vc1', '.vp8', '.vp9', '.av1', '.mv4'];
+  const audioKeywords = ['/audio/', '/sound/', '/voice/', 'audio_only', 'audio-only', '/aud/', 'audonly', 'audiostream'];
+  const videoOnlyKeywords = ['/video_only/', 'video-only', 'video_only', 'mute', 'silent', '/vidonly/', 'videoonly'];
+
+  return videos.filter(video => {
+    if (!video || !video.url) return false;
+
+    const urlLower = video.url.toLowerCase();
+    const contentType = (video.type || '').toLowerCase();
+
+    // 检查扩展名
+    const isAudioOnly = audioOnlyExtensions.some(ext => urlLower.includes(ext));
+    const isVideoOnly = videoOnlyExtensions.some(ext => urlLower.includes(ext));
+
+    // 检查 URL 关键词
+    const hasAudioKeyword = audioKeywords.some(keyword => urlLower.includes(keyword));
+    const hasVideoOnlyKeyword = videoOnlyKeywords.some(keyword => urlLower.includes(keyword));
+
+    // 检查 Content-Type
+    let isAudioByType = false;
+    let isVideoOnlyByType = false;
+    if (contentType) {
+      if (contentType.startsWith('audio/') && !contentType.includes('video')) {
+        isAudioByType = true;
+      }
+      if (contentType.includes('video') && contentType.includes('only')) {
+        isVideoOnlyByType = true;
+      }
+    }
+
+    // 检查 URL 参数
+    let isAudioByParam = false;
+    let isVideoOnlyByParam = false;
+    try {
+      const urlObj = new URL(video.url);
+      if (urlObj.searchParams.has('audio_only') || urlObj.searchParams.has('audio-only')) {
+        isAudioByParam = true;
+      }
+      if (urlObj.searchParams.has('video_only') || urlObj.searchParams.has('video-only') ||
+          urlObj.searchParams.has('mute') || urlObj.searchParams.has('silent')) {
+        isVideoOnlyByParam = true;
+      }
+
+      // 🔥 流媒体特殊检测：检查路径中包含 audio/video 标记
+      const pathname = urlObj.pathname.toLowerCase();
+      if (pathname.includes('/audio/') || pathname.includes('/audio_') ||
+          pathname.includes('-audio-') || pathname.includes('.audio.')) {
+        isAudioByParam = true;
+      }
+      if (pathname.includes('/video_only/') || pathname.includes('-videoonly-') ||
+          pathname.includes('/mute/') || pathname.includes('-mute-')) {
+        isVideoOnlyByParam = true;
+      }
+    } catch (e) {
+      // URL 解析失败，忽略
+    }
+
+    // 🔥 特殊检测：检查文件名模式
+    const filename = urlLower.substring(urlLower.lastIndexOf('/') + 1);
+    if (filename.match(/^audio/)) {
+      isAudioByParam = true;
+    }
+    if (filename.match(/^video.*only/) || filename.match(/mute/)) {
+      isVideoOnlyByParam = true;
+    }
+
+    // 如果是任何一种不完整的情况，则过滤掉
+    const isIncomplete = isAudioOnly || isVideoOnly ||
+                        hasAudioKeyword || hasVideoOnlyKeyword ||
+                        isAudioByType || isVideoOnlyByType ||
+                        isAudioByParam || isVideoOnlyByParam;
+
+    // 返回 true 表示保留（不是不完整的）
+    return !isIncomplete;
   });
 }
 
@@ -1820,30 +2371,23 @@ async function handleTranslate() {
     const lines = text.split('\n').filter(line => line.trim());
     const isMultiLine = lines.length > 1;
 
-    console.log('📝 输入文本行数:', lines.length);
-    console.log('📝 分割后的行:', lines);
 
     if (isMultiLine) {
       // 多行文本：逐行翻译
-      console.log(`🎯 开始逐行翻译，共 ${lines.length} 行`);
 
       const translatedLines = await translator.translateLines(
         lines,
         sourceLang,
         targetLang,
         (progress) => {
-          console.log(`翻译进度: ${progress.current}/${progress.total} (${progress.percent}%)`);
         }
       );
 
-      console.log('✅ 翻译完成，结果行数:', translatedLines.length);
-      console.log('✅ 翻译结果:', translatedLines);
 
       // 显示翻译结果（原文+译文）
       displayTranslationResult(lines, translatedLines);
     } else {
       // 单行文本：直接翻译
-      console.log('🎯 开始翻译单行文本');
 
       const translated = await translator.translate(text, sourceLang, targetLang);
 
@@ -1855,10 +2399,8 @@ async function handleTranslate() {
       copyBtn.style.display = 'flex';
     }
 
-    console.log('✅ 翻译完成');
 
   } catch (error) {
-    console.error('❌ 翻译失败:', error);
 
     translationResult.innerHTML =
       '<div class="translation-error">' +
@@ -1882,9 +2424,6 @@ async function handleTranslate() {
  * @param {string[]} translatedLines - 译文行数组
  */
 function displayTranslationResult(originalLines, translatedLines) {
-  console.log('🎨 开始渲染翻译结果');
-  console.log('📊 原文行数:', originalLines.length);
-  console.log('📊 译文行数:', translatedLines.length);
 
   let html = '';
 
@@ -1892,7 +2431,6 @@ function displayTranslationResult(originalLines, translatedLines) {
     const original = originalLines[i];
     const translated = translatedLines[i];
 
-    console.log(`第 ${i + 1} 行:`, { original, translated });
 
     html += '<div class="translation-line">';
     html += '<div class="original-line">' + escapeHtml(original) + '</div>';
@@ -1900,8 +2438,6 @@ function displayTranslationResult(originalLines, translatedLines) {
     html += '</div>';
   }
 
-  console.log('🖼️ 生成的HTML长度:', html.length);
-  console.log('🖼️ HTML预览（前500字符）:', html.substring(0, 500));
 
   translationResult.innerHTML = html;
   translationResult.classList.remove('translating');
@@ -1909,7 +2445,6 @@ function displayTranslationResult(originalLines, translatedLines) {
   // 显示复制按钮
   copyBtn.style.display = 'flex';
 
-  console.log('✅ 翻译结果渲染完成');
 }
 
 /**
@@ -1937,7 +2472,6 @@ async function handleCopyTranslation() {
     }, 2000);
 
   } catch (error) {
-    console.error('复制失败:', error);
     alert('复制失败，请手动复制');
   }
 }

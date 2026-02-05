@@ -3,10 +3,6 @@
   'use strict';
 
   // 🔥 强制输出日志，确保脚本已加载
-  console.log('%c' + '='.repeat(60), 'color: #ff6b6b; font-size: 16px; font-weight: bold;');
-  console.log('%c📸 媒体捕获器已启动', 'color: #4ecdc4; font-size: 20px; font-weight: bold;');
-  console.log('%c📍 当前页面:', 'color: #95e1d3; font-size: 14px;', window.location.href);
-  console.log('%c' + '='.repeat(60), 'color: #ff6b6b; font-size: 16px; font-weight: bold;');
 
   // 🔥 检查是否在特殊页面上，如果是则退出
   const protocol = window.location.protocol;
@@ -15,11 +11,9 @@
       protocol === 'about:' ||
       protocol === 'edge:' ||
       protocol === 'opera:') {
-    console.log('%c🚫 特殊页面，跳过媒体捕获器', 'color: #ff6b6b; font-size: 14px;');
     return;
   }
 
-  console.log('%c✅ 页面检查通过，开始初始化...', 'color: #4ecdc4; font-size: 14px;');
 
   let isCapturingImages = false;
   let isCapturingAudios = false;
@@ -51,7 +45,6 @@
       if (error.message.includes('Extension context invalidated')) {
         return;
       }
-      console.warn('发送消息失败:', error);
     }
   }
 
@@ -98,7 +91,6 @@
       try {
         observer.observe({ entryTypes: ['resource'] });
       } catch (e) {
-        console.warn('PerformanceObserver 注册失败:', e);
       }
     }
 
@@ -144,7 +136,6 @@
       });
 
       if (imageCount > 0 || audioCount > 0 || videoCount > 0) {
-        console.log(`✅ Performance API 扫描完成: ${imageCount} 图片, ${audioCount} 音频, ${videoCount} 视频`);
       }
     }, 1500);
   }
@@ -172,7 +163,6 @@
       return originalXHRSend.apply(this, args);
     };
   } catch (e) {
-    console.log('XHR 拦截失败:', e);
   }
 
   // 拦截 Fetch API
@@ -192,7 +182,6 @@
       });
     };
   } catch (e) {
-    console.log('Fetch 拦截失败:', e);
   }
 
   // 检查是否为媒体资源
@@ -222,7 +211,6 @@
       if (hasMediaExt) {
         // 有明确的媒体文件扩展名，移除所有查询参数
         normalizedUrl = urlObj.origin + urlObj.pathname;
-        console.log('✅ 媒体文件（有扩展名），移除所有参数:', normalizedUrl);
       } else {
         // 🔥 优先级2：没有扩展名，检查是否有格式相关查询参数
         const formatParam = urlObj.searchParams.get('format');
@@ -240,16 +228,13 @@
 
           const queryString = importantParams.toString();
           normalizedUrl = urlObj.origin + urlObj.pathname + (queryString ? '?' + queryString : '');
-          console.log('✅ 无扩展名，保留格式参数:', normalizedUrl);
         } else {
           // 🔥 优先级3：既没有扩展名也没有格式参数，移除所有查询参数
           normalizedUrl = urlObj.origin + urlObj.pathname;
-          console.log('✅ 无扩展名且无格式参数，移除所有参数:', normalizedUrl);
         }
       }
     } catch (e) {
       // URL解析失败，使用原始URL
-      console.log('⚠️ URL解析失败，使用原始URL:', url);
     }
 
     // 检查是否已捕获过（使用标准化后的URL）
@@ -281,8 +266,6 @@
     const urlLower = url.toLowerCase();
 
     // 🔥 调试日志
-    console.log('🔍 [isImage] 检查 URL:', url);
-    console.log('🔍 [isImage] contentType:', contentType);
 
     // 🔥 先过滤掉 JavaScript bundle 文件（即使末尾有图片扩展名）
     const jsBundlePatterns = [
@@ -389,7 +372,6 @@
     const hasMimeType = contentType && imageMimes.some(mime => contentType.includes(mime));
 
     const result = hasExtension || hasMimeType;
-    console.log(`✅ [isImage] 结果: ${result}, hasExtension: ${hasExtension}, hasMimeType: ${hasMimeType}`);
     return result;
   }
 
@@ -505,16 +487,14 @@
     // 🔥 获取请求头信息
     const requestHeaders = mediaRequestHeaders.get(url);
 
-    // 获取图片大小
-    fetch(url)
+    // 🔥 尝试获取图片大小（使用 no-cors 模式避免 CORS 错误）
+    fetch(url, { mode: 'no-cors' })
       .then(response => {
-        const size = response.headers.get('Content-Length');
-        const sizeFormatted = size ? formatSize(parseInt(size)) : '未知大小';
-
+        // no-cors 模式下无法读取响应头，但至少不产生 CORS 错误
         const media = {
           url: url,
           type: contentType || 'image/jpeg',
-          size: sizeFormatted,
+          size: '未知大小',
           timestamp: Date.now(),
           // 🔥 添加请求头信息（用于下载时的权限验证）
           requestHeaders: requestHeaders ? {
@@ -537,7 +517,7 @@
         });
       })
       .catch(err => {
-        // 即使无法获取大小，仍然捕获图片
+        // 即使 fetch 失败，仍然捕获图片
         const media = {
           url: url,
           type: contentType || 'image/jpeg',
@@ -573,17 +553,15 @@
     // 🔥 获取请求头信息
     const requestHeaders = mediaRequestHeaders.get(url);
 
-    fetch(url)
+    // 🔥 尝试获取音频大小（使用 no-cors 模式避免 CORS 错误）
+    fetch(url, { mode: 'no-cors' })
       .then(response => {
-        const size = response.headers.get('Content-Length');
-        const sizeFormatted = size ? formatSize(parseInt(size)) : '未知大小';
-
         let audioType = contentType || detectAudioType(url);
 
         const media = {
           url: url,
           type: audioType,
-          size: sizeFormatted,
+          size: '未知大小',
           timestamp: Date.now(),
           // 🔥 添加请求头信息（用于下载时的权限验证）
           requestHeaders: requestHeaders ? {
@@ -642,17 +620,15 @@
     // 🔥 获取请求头信息
     const requestHeaders = mediaRequestHeaders.get(url);
 
-    fetch(url)
+    // 🔥 尝试获取视频大小（使用 no-cors 模式避免 CORS 错误）
+    fetch(url, { mode: 'no-cors' })
       .then(response => {
-        const size = response.headers.get('Content-Length');
-        const sizeFormatted = size ? formatSize(parseInt(size)) : '未知大小';
-
         let videoType = contentType || detectVideoType(url);
 
         const media = {
           url: url,
           type: videoType,
-          size: sizeFormatted,
+          size: '未知大小',
           timestamp: Date.now(),
           // 🔥 添加请求头信息（用于下载时的权限验证）
           requestHeaders: requestHeaders ? {
@@ -804,7 +780,6 @@
           userAgent: navigator.userAgent,
           cookie: document.cookie
         });
-        console.log('🔐 存储请求头信息:', url, pageInfo.referer);
       }
 
       // 🔥 立即标记为已捕获
@@ -985,7 +960,6 @@
       // 🔥 先扫描所有已加载的网络资源（包括懒加载和动态加载的）
       try {
         const resources = performance.getEntriesByType('resource');
-        console.log(`🔍 扫描 ${resources.length} 个网络资源...`);
 
         resources.forEach((resource) => {
           if (resource.name && !capturedUrls.has(resource.name)) {
@@ -993,16 +967,12 @@
 
             // 🔥 特别关注 .webp 文件
             if (url.toLowerCase().includes('.webp')) {
-              console.log('🎯 发现 .webp 资源:', url);
             }
 
             // 检查图片
             if (isCapturingImages && isImage(url, null)) {
-              console.log('✅ 捕获图片:', url);
               checkMediaResource(url, 'image');
               totalCaptured++;
-            } else if (url.toLowerCase().includes('.webp')) {
-              console.log('❌ .webp 未通过 isImage 检查:', url);
             }
 
             // 检查音频
@@ -1019,9 +989,7 @@
           }
         });
 
-        console.log(`✅ 从网络资源中捕获了 ${totalCaptured} 个文件`);
       } catch (e) {
-        console.warn('扫描网络资源失败:', e);
       }
 
       // 捕获已存在的图片
@@ -1118,7 +1086,6 @@
         });
       }
 
-      console.log('✅ 页面媒体扫描完成');
     }, 100);
   }
 
@@ -1155,7 +1122,6 @@
       const delays = [500, 1000, 2000, 3000, 5000, 8000];
       delays.forEach(delay => {
         setTimeout(() => {
-          console.log(`🔍 延迟扫描 (${delay}ms)...`);
           captureExistingMedia();
         }, delay);
       });
@@ -1170,5 +1136,4 @@
     autoStartCapture();
   }
 
-  console.log('📸 媒体捕获器已加载 - 自动捕获: ' + (AUTO_CAPTURE_ON_LOAD ? '开启' : '关闭'));
 })();

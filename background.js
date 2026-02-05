@@ -476,7 +476,7 @@ async function handleFetchBlob(message, sendResponse) {
     // 🔥 获取当前标签页的完整 Cookie
     let fullCookie = requestHeaders?.cookie || '';
 
-    // 如果 URL 是微博等需要 HttpOnly Cookie 的网站，通过 Chrome API 获取完整 Cookie
+    // 如果 URL 是需要 HttpOnly Cookie 的网站，通过 Chrome API 获取完整 Cookie
     try {
       const urlObj = new URL(url);
       const cookies = await chrome.cookies.getAll({ domain: urlObj.hostname });
@@ -489,6 +489,9 @@ async function handleFetchBlob(message, sendResponse) {
       console.warn('获取 Cookie 失败:', err);
     }
 
+    // 🔥 构建 URL 对象以获取更多信息
+    const urlObj = new URL(url);
+
     // 🔥 构建完整的请求头
     const headers = {
       'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
@@ -496,18 +499,19 @@ async function handleFetchBlob(message, sendResponse) {
       'Cache-Control': 'no-cache',
       'Pragma': 'no-cache',
       'Sec-Fetch-Dest': 'image',
-      'Sec-Fetch-Mode': 'no-cors',
-      'Sec-Fetch-Site': 'same-site',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'cross-site',
+      // 🔥 添加 Referer（使用图片 URL 的 origin）
+      'Referer': requestHeaders?.referer || `${urlObj.protocol}//${urlObj.host}/`,
+      // 🔥 添加 Origin
+      'Origin': urlObj.origin,
     };
-
-    // 添加 Referer
-    if (requestHeaders?.referer) {
-      headers['Referer'] = requestHeaders.referer;
-    }
 
     // 添加 User-Agent
     if (requestHeaders?.userAgent) {
       headers['User-Agent'] = requestHeaders.userAgent;
+    } else {
+      headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     }
 
     // 添加 Cookie
