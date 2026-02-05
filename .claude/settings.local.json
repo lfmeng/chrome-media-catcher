@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node test-twitter-url.js:*)",
+      "Bash(node test-url-normalization.js:*)",
+      "Bash(node -c:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\n添加 fetchBlob 功能支持批量下载绕过CORS\n\n- 新增 handleFetchBlob 函数处理批量下载\n- 添加 CORS_FIX_GUIDE.md 文档\n- 更新文件权限\nEOF\n\\)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

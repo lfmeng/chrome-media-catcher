@@ -280,6 +280,10 @@
   function isImage(url, contentType) {
     const urlLower = url.toLowerCase();
 
+    // 🔥 调试日志
+    console.log('🔍 [isImage] 检查 URL:', url);
+    console.log('🔍 [isImage] contentType:', contentType);
+
     // 🔥 先过滤掉 JavaScript bundle 文件（即使末尾有图片扩展名）
     const jsBundlePatterns = [
       '~loader.',     // webpack loader pattern
@@ -384,7 +388,9 @@
     const hasExtension = imageExtensions.some(ext => urlLower.includes(ext));
     const hasMimeType = contentType && imageMimes.some(mime => contentType.includes(mime));
 
-    return hasExtension || hasMimeType;
+    const result = hasExtension || hasMimeType;
+    console.log(`✅ [isImage] 结果: ${result}, hasExtension: ${hasExtension}, hasMimeType: ${hasMimeType}`);
+    return result;
   }
 
   // 判断是否为视频 - 增强版
@@ -975,6 +981,48 @@
   function captureExistingMedia() {
     setTimeout(() => {
       let totalCaptured = 0;
+
+      // 🔥 先扫描所有已加载的网络资源（包括懒加载和动态加载的）
+      try {
+        const resources = performance.getEntriesByType('resource');
+        console.log(`🔍 扫描 ${resources.length} 个网络资源...`);
+
+        resources.forEach((resource) => {
+          if (resource.name && !capturedUrls.has(resource.name)) {
+            const url = resource.name;
+
+            // 🔥 特别关注 .webp 文件
+            if (url.toLowerCase().includes('.webp')) {
+              console.log('🎯 发现 .webp 资源:', url);
+            }
+
+            // 检查图片
+            if (isCapturingImages && isImage(url, null)) {
+              console.log('✅ 捕获图片:', url);
+              checkMediaResource(url, 'image');
+              totalCaptured++;
+            } else if (url.toLowerCase().includes('.webp')) {
+              console.log('❌ .webp 未通过 isImage 检查:', url);
+            }
+
+            // 检查音频
+            if (isCapturingAudios && isAudio(url, null)) {
+              checkMediaResource(url, 'audio');
+              totalCaptured++;
+            }
+
+            // 检查视频
+            if (isCapturingVideos && isVideo(url, null)) {
+              checkMediaResource(url, 'video');
+              totalCaptured++;
+            }
+          }
+        });
+
+        console.log(`✅ 从网络资源中捕获了 ${totalCaptured} 个文件`);
+      } catch (e) {
+        console.warn('扫描网络资源失败:', e);
+      }
 
       // 捕获已存在的图片
       if (isCapturingImages) {

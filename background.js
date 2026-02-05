@@ -466,53 +466,98 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // 🔥 获取文件Blob（用于批量下载）
-function handleFetchBlob(message, sendResponse) {
+async function handleFetchBlob(message, sendResponse) {
   const { url, requestHeaders } = message;
 
   console.log('📥 获取Blob:', url);
+  console.log('🔐 原始请求头:', requestHeaders);
 
-  // 使用fetch下载
-  fetch(url, {
-    headers: requestHeaders ? {
-      'Referer': requestHeaders.referer || '',
-      'User-Agent': requestHeaders.userAgent || '',
-      'Cookie': requestHeaders.cookie || ''
-    } : {}
-  })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  try {
+    // 🔥 获取当前标签页的完整 Cookie
+    let fullCookie = requestHeaders?.cookie || '';
+
+    // 如果 URL 是微博等需要 HttpOnly Cookie 的网站，通过 Chrome API 获取完整 Cookie
+    try {
+      const urlObj = new URL(url);
+      const cookies = await chrome.cookies.getAll({ domain: urlObj.hostname });
+
+      if (cookies && cookies.length > 0) {
+        fullCookie = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+        console.log(`🍪 获取到 ${cookies.length} 个 Cookie`);
       }
-      return response.blob();
-    })
-    .then(blob => {
-      // 将blob转换为base64（因为不能直接传递blob）
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64data = reader.result.split(',')[1]; // 移除data:xxx;base64,前缀
-        sendResponse({
-          success: true,
-          data: base64data,
-          type: blob.type
-        });
-      };
-      reader.readAsDataURL(blob);
-    })
-    .catch(error => {
-      console.error('❌ 获取Blob失败:', error);
-      sendResponse({
-        success: false,
-        error: error.message
-      });
+    } catch (err) {
+      console.warn('获取 Cookie 失败:', err);
+    }
+
+    // 🔥 构建完整的请求头
+    const headers = {
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      'Sec-Fetch-Dest': 'image',
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Site': 'same-site',
+    };
+
+    // 添加 Referer
+    if (requestHeaders?.referer) {
+      headers['Referer'] = requestHeaders.referer;
+    }
+
+    // 添加 User-Agent
+    if (requestHeaders?.userAgent) {
+      headers['User-Agent'] = requestHeaders.userAgent;
+    }
+
+    // 添加 Cookie
+    if (fullCookie) {
+      headers['Cookie'] = fullCookie;
+    }
+
+    console.log('🔐 实际请求头:', headers);
+
+    // 使用fetch下载
+    const response = await fetch(url, {
+      headers: headers
     });
+
+    console.log('📊 响应状态:', response.status, response.statusText);
+    console.log('📊 响应类型:', response.headers.get('Content-Type'));
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    console.log('✅ Blob 类型:', blob.type, '大小:', blob.size);
+
+    // 将blob转换为base64（因为不能直接传递blob）
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64data = reader.result.split(',')[1]; // 移除data:xxx;base64,前缀
+      sendResponse({
+        success: true,
+        data: base64data,
+        type: blob.type
+      });
+    };
+    reader.readAsDataURL(blob);
+  } catch (error) {
+    console.error('❌ 获取Blob失败:', error);
+    sendResponse({
+      success: false,
+      error: error.message
+    });
+  }
 }
 
 // 🔥 处理文件下载（绕过CORS）
-function handleDownloadFile(message, sendResponse) {
+async function handleDownloadFile(message, sendResponse) {
   const { url, requestHeaders } = message;
 
   console.log('📥 Background下载文件:', url);
-  console.log('🔐 请求头:', requestHeaders);
+  console.log('🔐 原始请求头:', requestHeaders);
 
   // 从URL中提取文件名
   let fileName = 'download';
@@ -540,77 +585,113 @@ function handleDownloadFile(message, sendResponse) {
     fileName = `download_${Date.now()}`;
   }
 
-  // 🔥 使用fetch下载（background script不受CORS限制）
-  fetch(url, {
-    headers: requestHeaders ? {
-      'Referer': requestHeaders.referer || '',
-      'User-Agent': requestHeaders.userAgent || '',
-      'Cookie': requestHeaders.cookie || ''
-    } : {}
-  })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  try {
+    // 🔥 获取当前标签页的完整 Cookie
+    let fullCookie = requestHeaders?.cookie || '';
+
+    // 如果 URL 是微博等需要 HttpOnly Cookie 的网站，通过 Chrome API 获取完整 Cookie
+    try {
+      const urlObj = new URL(url);
+      const cookies = await chrome.cookies.getAll({ domain: urlObj.hostname });
+
+      if (cookies && cookies.length > 0) {
+        fullCookie = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+        console.log(`🍪 获取到 ${cookies.length} 个 Cookie`);
       }
-      return response.blob();
-    })
-    .then(blob => {
-      // 创建Blob URL
-      const blobUrl = URL.createObjectURL(blob);
+    } catch (err) {
+      console.warn('获取 Cookie 失败:', err);
+    }
 
-      // 使用chrome.downloads.download下载
-      chrome.downloads.download({
-        url: blobUrl,
-        filename: fileName,
-        saveAs: true
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('❌ 下载失败:', chrome.runtime.lastError);
-          sendResponse({
-            success: false,
-            error: chrome.runtime.lastError.message
-          });
-        } else {
-          console.log('✅ 下载成功:', fileName);
+    // 🔥 构建完整的请求头
+    const headers = {};
 
-          // 清理Blob URL（延迟执行，确保下载开始）
-          setTimeout(() => {
-            URL.revokeObjectURL(blobUrl);
-          }, 5000);
+    // 添加 Referer
+    if (requestHeaders?.referer) {
+      headers['Referer'] = requestHeaders.referer;
+    }
 
-          sendResponse({
-            success: true,
-            filename: fileName,
-            downloadId: downloadId
-          });
-        }
-      });
-    })
-    .catch(error => {
-      console.error('❌ Fetch失败:', error);
+    // 添加 User-Agent
+    if (requestHeaders?.userAgent) {
+      headers['User-Agent'] = requestHeaders.userAgent;
+    }
 
-      // 降级方案：直接使用chrome.downloads.download（不带请求头）
-      console.log('🔄 降级到直接下载');
-      chrome.downloads.download({
-        url: url,
-        filename: fileName,
-        saveAs: true
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          sendResponse({
-            success: false,
-            error: chrome.runtime.lastError.message
-          });
-        } else {
-          sendResponse({
-            success: true,
-            filename: fileName,
-            downloadId: downloadId,
-            note: '降级下载（未使用请求头）'
-          });
-        }
-      });
+    // 添加 Cookie
+    if (fullCookie) {
+      headers['Cookie'] = fullCookie;
+    }
+
+    console.log('🔐 实际请求头:', headers);
+
+    // 使用fetch下载（background script不受CORS限制）
+    const response = await fetch(url, {
+      headers: headers
     });
+
+    console.log('📊 响应状态:', response.status, response.statusText);
+    console.log('📊 响应类型:', response.headers.get('Content-Type'));
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    console.log('✅ Blob 类型:', blob.type, '大小:', blob.size);
+
+    // 创建Blob URL
+    const blobUrl = URL.createObjectURL(blob);
+
+    // 使用chrome.downloads.download下载
+    chrome.downloads.download({
+      url: blobUrl,
+      filename: fileName,
+      saveAs: true
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        console.error('❌ 下载失败:', chrome.runtime.lastError);
+        sendResponse({
+          success: false,
+          error: chrome.runtime.lastError.message
+        });
+      } else {
+        console.log('✅ 下载成功:', fileName);
+
+        // 清理Blob URL（延迟执行，确保下载开始）
+        setTimeout(() => {
+          URL.revokeObjectURL(blobUrl);
+        }, 5000);
+
+        sendResponse({
+          success: true,
+          filename: fileName,
+          downloadId: downloadId
+        });
+      }
+    });
+  } catch (error) {
+    console.error('❌ Fetch失败:', error);
+
+    // 降级方案：直接使用chrome.downloads.download（不带请求头）
+    console.log('🔄 降级到直接下载');
+    chrome.downloads.download({
+      url: url,
+      filename: fileName,
+      saveAs: true
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({
+          success: false,
+          error: chrome.runtime.lastError.message
+        });
+      } else {
+        sendResponse({
+          success: true,
+          filename: fileName,
+          downloadId: downloadId,
+          note: '降级下载（未使用请求头）'
+        });
+      }
+    });
+  }
 }
 
 // 🔥 处理 FFmpeg 转换
